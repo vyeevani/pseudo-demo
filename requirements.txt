@@ -1,0 +1,7 @@
+numpy
+trimesh
+pyrender
+scipy
+transforms3d
+open3d
+rerun-sdk
