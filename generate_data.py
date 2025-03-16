@@ -118,9 +118,8 @@ class DataGenerator:
             object_poses.append(current_pose.copy())
         
         return object_poses
-    
     def _depth_to_pointcloud(self, depth: np.ndarray, camera_intrinsics: Dict[str, float], camera_pose: np.ndarray) -> np.ndarray:
-        """Convert depth image to point cloud in world coordinates.
+        """Convert depth image to point cloud in world coordinates, considering camera space is RUB and point space is Y up right-handed.
         
         Args:
             depth: Depth image (H x W)
@@ -155,8 +154,8 @@ class DataGenerator:
         # Stack coordinates with proper numerical checks
         points = np.zeros((np.sum(valid_mask), 4), dtype=np.float32)
         points[:, 0] = x_valid * depth_valid
-        points[:, 1] = y_valid * depth_valid
-        points[:, 2] = depth_valid
+        points[:, 1] = -y_valid * depth_valid  # Invert Y to account for 'Up' direction in RUB
+        points[:, 2] = -depth_valid  # Invert Z to account for 'Back' direction in RUB
         points[:, 3] = 1.0
         
         # Check camera pose matrix for validity
