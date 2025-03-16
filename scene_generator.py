@@ -81,7 +81,19 @@ class SceneGenerator:
         
     def _setup_cameras(self):
         """Setup a single depth camera at a fixed viewpoint."""
-        camera = pyrender.PerspectiveCamera(yfov=np.pi / 4.0, aspectRatio=4.0/3.0)
+        # Define camera intrinsics
+        self.camera_width = 640
+        self.camera_height = 480
+        yfov = np.pi / 4.0
+        aspect_ratio = 4.0/3.0
+        
+        # Calculate focal length from FoV
+        self.fx = self.camera_width / (2 * np.tan(yfov * aspect_ratio / 2))
+        self.fy = self.camera_height / (2 * np.tan(yfov / 2))
+        self.cx = self.camera_width / 2
+        self.cy = self.camera_height / 2
+        
+        camera = pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=aspect_ratio)
         
         # Setup single camera centered above and behind the scene
         camera_pose = np.array([
@@ -94,6 +106,26 @@ class SceneGenerator:
         cam_node = pyrender.Node(camera=camera, matrix=camera_pose)
         self.scene.add_node(cam_node)
         self.cameras.append(cam_node)
+        
+    def get_camera_intrinsics(self) -> Dict[str, float]:
+        """Get camera intrinsic parameters.
+        
+        Returns:
+            Dictionary containing camera intrinsics (fx, fy, cx, cy, matrix)
+        """
+        return {
+            'fx': self.fx,
+            'fy': self.fy,
+            'cx': self.cx,
+            'cy': self.cy,
+            'width': self.camera_width,
+            'height': self.camera_height,
+            'matrix': np.array([
+                [self.fx, 0, self.cx],
+                [0, self.fy, self.cy],
+                [0, 0, 1]
+            ])
+        }
     
     def sample_objects(self, num_objects: int = 2) -> List[trimesh.Trimesh]:
         """
@@ -176,13 +208,16 @@ class SceneGenerator:
         obj_idx = np.random.randint(0, len(object_transforms))
         obj_transform = object_transforms[obj_idx]
         
-        # Sample orientation
-        angle = np.random.uniform(0, 2 * np.pi)
-        R = t3d.euler.euler2mat(0, 0, angle)
+        # Sample random orientation
+        random_orientation = t3d.euler.euler2mat(
+            np.random.uniform(0, 2 * np.pi),
+            np.random.uniform(0, 2 * np.pi),
+            np.random.uniform(0, 2 * np.pi)
+        )
         
         T = np.eye(4)
-        T[:3, :3] = R
-        T[:3, 3] = obj_transform[:3, 3]  # Go directly to the object's position
+        T[:3, :3] = random_orientation
+        T[:3, 3] = obj_transform[:3, 3] + np.random.uniform(-0.05, 0.05, 3)  # Go approximately to the object's position with some variation
         
         waypoints.append(T)
         touched_objects.append(obj_idx)  # Touching the object
@@ -228,6 +263,9 @@ class SceneGenerator:
             for camera_id, camera_data in obs.items():
                 np.save(frame_path / f'{camera_id}_color.npy', camera_data['color'])
                 np.save(frame_path / f'{camera_id}_depth.npy', camera_data['depth'])
+                np.save(frame_path / f'{camera_id}_point_cloud.npy', camera_data['point_cloud'])
+                np.save(frame_path / f'{camera_id}_camera_pose.npy', camera_data['camera_pose'])
+                np.save(frame_path / f'{camera_id}_camera_intrinsics.npy', camera_data['camera_intrinsics'])
         
         # Save metadata
         np.save(
