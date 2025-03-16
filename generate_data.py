@@ -218,19 +218,24 @@ class DataGenerator:
             for obj_idx, obj_node in enumerate(object_nodes):
                 self.scene_generator.scene.set_pose(obj_node, object_poses[obj_idx][pose_idx])
             
-            # Render from all cameras with flags for better quality
+            # Render from all cameras
             frame_observations = {}
-            for i, camera in enumerate(self.scene_generator.cameras):
-                flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
-                color, depth = renderer.render(self.scene_generator.scene, flags=flags)
+            for cam_idx in range(len(self.scene_generator.camera_nodes)):
+                # Set the active camera for this render pass
+                self.scene_generator.set_active_camera(cam_idx)
                 
                 # Get camera pose
-                camera_pose = self.scene_generator.scene.get_pose(camera)
+                camera_pose = self.scene_generator.get_camera_pose(cam_idx)
+                
+                # Render with shadows and better quality
+                flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
+                color, depth = renderer.render(self.scene_generator.scene, flags=flags)
                 
                 # Generate point cloud
                 point_cloud = self._depth_to_pointcloud(depth, camera_intrinsics, camera_pose)
                 
-                frame_observations[f'camera_{i}'] = {
+                # Store camera data with proper indexing
+                frame_observations[f'camera_{cam_idx}'] = {
                     'color': color,
                     'depth': depth,
                     'point_cloud': point_cloud,
@@ -244,6 +249,14 @@ class DataGenerator:
         self.scene_generator.scene.remove_node(gripper_node)
         for obj_node in object_nodes:
             self.scene_generator.scene.remove_node(obj_node)
+            
+        # Make sure to deactivate the last active camera
+        if self.scene_generator.active_camera_idx is not None:
+            self.scene_generator.scene.remove_node(
+                self.scene_generator.camera_nodes[self.scene_generator.active_camera_idx]
+            )
+            self.scene_generator.active_camera_idx = None
+            
         renderer.delete()
         
         return observations

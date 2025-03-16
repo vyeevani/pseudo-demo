@@ -79,8 +79,42 @@ class SceneGenerator:
         
         self._setup_cameras()
         
+    def _create_look_at_matrix(self, camera_pos: np.ndarray, target_pos: np.ndarray = np.array([0, 0, 0]), up: np.ndarray = np.array([0, 0, 1])) -> np.ndarray:
+        """Create a camera transformation matrix that looks at a target point."""
+        # Normalize vectors
+        forward = target_pos - camera_pos
+        forward = forward / np.linalg.norm(forward)
+        right = np.cross(forward, up)
+        right = right / np.linalg.norm(right)
+        up = np.cross(right, forward)
+        
+        # Create rotation matrix
+        R = np.column_stack([right, up, -forward])
+        
+        # Create transformation matrix
+        T = np.eye(4)
+        T[:3, :3] = R
+        T[:3, 3] = camera_pos
+
+        return T
+
+    def _generate_random_camera_pose(self, min_dist: float = 1.0, max_dist: float = 2.0) -> np.ndarray:
+        """Generate a random camera pose that looks at the origin."""
+        # Generate random spherical coordinates
+        theta = np.random.uniform(0, 2 * np.pi)  # azimuth
+        phi = np.random.uniform(np.pi/6, np.pi/2)  # elevation (avoid too low angles)
+        r = np.random.uniform(min_dist, max_dist)  # distance
+        
+        # Convert to Cartesian coordinates
+        x = r * np.sin(phi) * np.cos(theta)
+        y = r * np.sin(phi) * np.sin(theta)
+        z = r * np.cos(phi)
+        
+        camera_pos = np.array([x, y, z])
+        return self._create_look_at_matrix(camera_pos)
+
     def _setup_cameras(self):
-        """Setup a single depth camera at a fixed viewpoint."""
+        """Setup multiple camera nodes but keep only one active at a time."""
         # Define camera intrinsics
         self.camera_width = 640
         self.camera_height = 480
@@ -93,20 +127,58 @@ class SceneGenerator:
         self.cx = self.camera_width / 2
         self.cy = self.camera_height / 2
         
-        camera = pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=aspect_ratio)
+        # Create and store camera nodes (but don't add them to scene yet)
+        self.camera_nodes = []
+        self.active_camera_idx = None
         
-        # Setup single camera centered above and behind the scene
-        camera_pose = np.array([
+        # Create main camera node centered above and behind the scene
+        main_camera_pose = np.array([
             [1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.866, -0.5, -1.0],  # Move back in Y to center view
-            [0.0, 0.5, 0.866, 2.5],    # Lower height and move forward in Z
+            [0.0, 0.866, -0.5, -1.0],
+            [0.0, 0.5, 0.866, 2.5],
             [0.0, 0.0, 0.0, 1.0]
         ])
+        main_camera = pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=aspect_ratio)
+        main_camera_node = pyrender.Node(camera=main_camera, matrix=main_camera_pose)
+        self.camera_nodes.append(main_camera_node)
         
-        cam_node = pyrender.Node(camera=camera, matrix=camera_pose)
-        self.scene.add_node(cam_node)
-        self.cameras.append(cam_node)
+        # Create three random camera nodes
+        for _ in range(3):
+            random_pose = self._generate_random_camera_pose()
+            camera = pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=aspect_ratio)
+            camera_node = pyrender.Node(camera=camera, matrix=random_pose)
+            self.camera_nodes.append(camera_node)
+            
+    def set_active_camera(self, camera_idx: int) -> None:
+        """Set the active camera by index.
         
+        Args:
+            camera_idx: Index of the camera to activate
+        """
+        if camera_idx < 0 or camera_idx >= len(self.camera_nodes):
+            raise ValueError(f"Invalid camera index {camera_idx}")
+            
+        # If there's an active camera, remove it
+        if self.active_camera_idx is not None:
+            self.scene.remove_node(self.camera_nodes[self.active_camera_idx])
+            
+        # Add the new camera node
+        self.scene.add_node(self.camera_nodes[camera_idx])
+        self.active_camera_idx = camera_idx
+        
+    def get_camera_pose(self, camera_idx: int) -> np.ndarray:
+        """Get the pose of a specific camera.
+        
+        Args:
+            camera_idx: Index of the camera to get pose for
+            
+        Returns:
+            4x4 camera pose matrix
+        """
+        if camera_idx < 0 or camera_idx >= len(self.camera_nodes):
+            raise ValueError(f"Invalid camera index {camera_idx}")
+        return self.camera_nodes[camera_idx].matrix
+    
     def get_camera_intrinsics(self) -> Dict[str, float]:
         """Get camera intrinsic parameters.
         
