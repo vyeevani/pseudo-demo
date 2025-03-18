@@ -289,8 +289,7 @@ class SceneGenerator:
         
         T = np.eye(4)
         T[:3, :3] = random_orientation
-        T[:3, 3] = obj_transform[:3, 3] + np.random.uniform(-0.05, 0.05, 3)  # Go approximately to the object's position with some variation
-        
+        T[:3, 3] = obj_transform[:3, 3] + np.random.uniform(0.005, 0.01, 3) * np.random.choice([-1, 1], 3)
         waypoints.append(T)
         touched_objects.append(obj_idx)  # Touching the object
         

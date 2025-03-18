@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from scene_generator import SceneGenerator
 from trajectory_generator import TrajectoryGenerator
+from widowx_gripper_mesh import create_gripper_node
 
 class DataGenerator:
     def __init__(self,
@@ -191,14 +192,14 @@ class DataGenerator:
         # Get camera intrinsics
         camera_intrinsics = self.scene_generator.get_camera_intrinsics()
         
-        # Create gripper node once
-        gripper_node = pyrender.Node(
-            mesh=pyrender.Mesh.from_trimesh(
-                self.scene_generator.gripper_mesh,
-                smooth=True  # Enable smooth shading
-            ),
-            matrix=np.eye(4)  # Initialize with identity matrix
-        )
+        # Create detailed gripper node using the widowx_gripper_mesh module
+        # we need to rotate the gripper 90 degrees around y and -90 degrees around x, to make the gripper point downwards
+        gripper_node = create_gripper_node()
+        rotation_y = trimesh.transformations.rotation_matrix(np.radians(90), [0, 1, 0])
+        rotation_x = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+        transform = trimesh.transformations.concatenate_matrices(rotation_y, rotation_x)
+        gripper_node.matrix = transform
+        gripper_node = pyrender.Node(children=[gripper_node])
         self.scene_generator.scene.add_node(gripper_node)
         
         # Create object nodes

@@ -5,8 +5,8 @@ from scipy.spatial.transform import Rotation
 
 def create_gripper_node(asset_dir='assets'):
     """
-    Create pyrender.Node objects that render only the gripper, by loading
-    the gripper meshes with appropriate transforms and returning them as separate nodes.
+    Create a single pyrender.Node object that renders the entire gripper,
+    by loading the gripper meshes with appropriate transforms and attaching them to a parent node.
     
     The gripper comprises:
       - The main gripper mesh ("wx250s_7_gripper.stl")
@@ -17,7 +17,7 @@ def create_gripper_node(asset_dir='assets'):
         asset_dir (str): Directory where the mesh files are stored.
         
     Returns:
-        list: List of pyrender.Node objects for each part of the gripper.
+        pyrender.Node: A single parent pyrender.Node object for the entire gripper.
     """
     gripper_mesh = trimesh.load_mesh(f'{asset_dir}/wx250s_7_gripper.stl').apply_scale(0.001)
     gripper_bar_mesh = trimesh.load_mesh(f'{asset_dir}/wx250s_9_gripper_bar.stl').apply_scale(0.001)
@@ -57,12 +57,15 @@ def create_gripper_node(asset_dir='assets'):
     left_finger_pyrender_mesh = pyrender.Mesh.from_trimesh(finger_mesh)
     right_finger_pyrender_mesh = pyrender.Mesh.from_trimesh(finger_mesh)
 
-    gripper_node = pyrender.Node(mesh=gripper_pyrender_mesh, matrix=root_to_motor_transform)
-    gripper_bar_node = pyrender.Node(mesh=gripper_bar_pyrender_mesh, matrix=root_to_motor_transform)
-    left_finger_node = pyrender.Node(mesh=left_finger_pyrender_mesh, matrix=root_to_left_finger)
-    right_finger_node = pyrender.Node(mesh=right_finger_pyrender_mesh, matrix=root_to_right_finger)
+    # Create a parent node for the gripper with all parts as children
+    gripper_node = pyrender.Node(children=[
+        pyrender.Node(mesh=gripper_pyrender_mesh, matrix=root_to_motor_transform),
+        pyrender.Node(mesh=gripper_bar_pyrender_mesh, matrix=root_to_motor_transform),
+        pyrender.Node(mesh=left_finger_pyrender_mesh, matrix=root_to_left_finger),
+        pyrender.Node(mesh=right_finger_pyrender_mesh, matrix=root_to_right_finger)
+    ])
 
-    return [gripper_node, gripper_bar_node, left_finger_node, right_finger_node]
+    return gripper_node
 
 # Example usage:
 if __name__ == '__main__':
@@ -72,10 +75,9 @@ if __name__ == '__main__':
     # Create a scene
     scene = pyrender.Scene()
 
-    # Create the gripper nodes and add them to the scene
-    nodes = create_gripper_node()
-    for node in nodes:
-        scene.add_node(node)
+    # Create the gripper node and add it to the scene
+    gripper_node = create_gripper_node()
+    scene.add_node(gripper_node)
     
     # Set up the viewer to render the scene
     viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
