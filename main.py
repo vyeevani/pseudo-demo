@@ -9,6 +9,7 @@ import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
 from widowx_gripper import create_gripper_node
+from tqdm import tqdm
 
 @dataclass
 class GraspDescriptor:
@@ -233,7 +234,7 @@ if __name__ == "__main__":
     environment = RigidManipulationEnvironment(grasps)
     policy = RigidManipulationPolicy(grasps, env_state)
     rr.init("Rigid Manipulation", spawn=True)
-    for i in range(1000):
+    for i in tqdm(range(1000)):
         action = policy(env_state)
         env_state = environment(env_state, action)
         observations = renderer(env_state)
@@ -254,4 +255,3 @@ if __name__ == "__main__":
                 mat3x3=camera_data['camera_pose'][:3, :3],
                 translation=camera_data['camera_pose'][:3, 3],
             ))
-            
