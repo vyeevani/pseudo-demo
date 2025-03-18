@@ -34,7 +34,7 @@ class RigidManipulationEnvironmentState:
         # Object constants
         object_poses = {
             i: spatial_utils.translate_pose(
-                spatial_utils.random_rotation(),
+                spatial_utils.random_rotation(random_z=True, random_y=False, random_x=False),
                 np.array([
                     np.random.uniform(-bounding_box_size / 2, bounding_box_size / 2),
                     np.random.uniform(-bounding_box_size / 2, bounding_box_size / 2),

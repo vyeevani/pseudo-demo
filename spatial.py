@@ -37,10 +37,18 @@ def spherical_to_cartesian(theta: float, phi: float, r: float) -> np.ndarray:
     
     return np.array([x, y, z])
 
-def random_rotation() -> np.ndarray:
-    """Generate a random 4x4 pose matrix with random rotations around all 3 axes and a random translation within specified distance bounds."""
-    # Random rotations around x, y, z axes
-    angles = np.random.uniform(0, 2 * np.pi, 3)
+def random_rotation(random_x: bool = True, random_y: bool = True, random_z: bool = True) -> np.ndarray:
+    """Generate a random 4x4 pose matrix with random rotations around specified axes."""
+    # Determine which axes to apply random rotations
+    angles = np.zeros(3)
+    if random_x:
+        angles[0] = np.random.uniform(0, 2 * np.pi)
+    if random_y:
+        angles[1] = np.random.uniform(0, 2 * np.pi)
+    if random_z:
+        angles[2] = np.random.uniform(0, 2 * np.pi)
+    
+    # Rotation matrices for x, y, z axes
     Rx = np.array([
         [1, 0, 0],
         [0, np.cos(angles[0]), -np.sin(angles[0])],
