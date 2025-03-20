@@ -56,7 +56,7 @@ def add_widowx_to_scene(scene: pyrender.Scene):
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
     for node in body_nodes.values():
         scene.add_node(node)
-    return Arm(model, data, body_nodes)
+    return Arm(model, data, body_nodes, "wx250s/left_finger_link")
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -106,19 +106,32 @@ class Arm:
     data: mujoco.MjData
     body_nodes: Dict[int, pyrender.Node]
     initial_pose: np.ndarray
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node]):
+    eef_name: str
+    
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str):
         self.model = model
         self.data = data
         self.body_nodes = body_nodes
         self.initial_pose = np.eye(4)
-        self.initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[8], scalar_first=True).as_matrix()
-        self.initial_pose[:3, 3] = self.data.xpos[8]
+        self.eef_name = eef_body_name
+        
+        # Find the body id for the end-effector name
+        eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
+        
+        self.initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[eef_id], scalar_first=True).as_matrix()
+        self.initial_pose[:3, 3] = self.data.xpos[eef_id]
         self.go_to_pose()
+    
     def go_to_pose(self, pose: Optional[np.ndarray] = None):
         if pose is None:
             pose = np.eye(4)
+        
+        # Find the body id for the end-effector name
+        eef_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
+        
         target_pose = pose @ self.initial_pose
-        ik(self.model, self.data, 8, target_pose)
+        ik(self.model, self.data, eef_id, target_pose)
+        
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
