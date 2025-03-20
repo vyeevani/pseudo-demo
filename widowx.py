@@ -5,7 +5,7 @@ import trimesh
 from scipy.spatial.transform import Rotation
 from robot_descriptions import widow_mj_description
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_to_geom_nodes = {}
@@ -63,7 +63,14 @@ class Arm:
     model: mujoco.MjModel
     data: mujoco.MjData
     body_nodes: Dict[int, pyrender.Node]
-    def update_body_nodes(self):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node]):
+        self.model = model
+        self.data = data
+        self.body_nodes = body_nodes
+        self.go_to_pose()
+    def go_to_pose(self, pose: Optional[np.ndarray] = None):
+        if pose is None:
+            pose = np.eye(4)
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
@@ -72,6 +79,5 @@ class Arm:
 
 scene = pyrender.Scene()
 arm = add_widowx_to_scene(scene)
-arm.update_body_nodes()
 
 viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
