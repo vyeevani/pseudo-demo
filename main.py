@@ -114,7 +114,7 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
-
+    
     def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 640, image_height: int = 480):
         num_objects = len(object_meshes)
         
