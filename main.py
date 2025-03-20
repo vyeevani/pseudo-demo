@@ -1,7 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
-import random
-from typing import Dict, List, Tuple, Any, Callable, Optional
+from typing import Dict, List, Optional
 import numpy as np
 import pyrender
 import trimesh
@@ -12,23 +11,23 @@ from widowx_gripper import create_gripper_node
 from tqdm import tqdm
 
 @dataclass
-class GraspDescriptor:
+class GraspTarget:
     object_id: int
     start_pose: np.ndarray
     grasp_pose: np.ndarray
     end_pose: np.ndarray
 
 @dataclass
-class RigidManipulationPolicyState:
+class RobotState:
     gripper_pose: np.ndarray
     grasped_object_id: Optional[int] = None
 
 @dataclass
-class RigidManipulationEnvironmentState:
+class EnvironmentState:
     camera_poses: List[np.ndarray]
     object_poses: Dict[int, np.ndarray]
     finished: bool
-    policy_state: RigidManipulationPolicyState
+    policy_state: RobotState
 
     def __init__(self, num_objects: int, num_cameras: int, bounding_box_size: float = 0.6):
         # Object constants
@@ -56,7 +55,7 @@ class RigidManipulationEnvironmentState:
         self.camera_poses = camera_poses
         self.object_poses = object_poses
         self.finished = False
-        self.policy_state = RigidManipulationPolicyState(
+        self.policy_state = RobotState(
             gripper_pose=np.eye(4),
             grasped_object_id=None
         )
@@ -109,7 +108,7 @@ def default_scene(add_table: bool = False) -> pyrender.Scene:
     return scene
 
 @dataclass
-class RigidManipulationRenderer:
+class Renderer:
     renderer: pyrender.OffscreenRenderer
     scene: pyrender.Scene
     camera_intrinsics: List[np.ndarray]
@@ -152,7 +151,7 @@ class RigidManipulationRenderer:
         self.gripper_node = gripper_node
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
-    def __call__(self, state: RigidManipulationEnvironmentState):
+    def __call__(self, state: EnvironmentState):
         for obj_id, obj_pose in state.object_poses.items():
             self.object_nodes[obj_id].matrix = obj_pose
         self.gripper_node.matrix = state.policy_state.gripper_pose
@@ -171,10 +170,10 @@ class RigidManipulationRenderer:
             observations.append(frame_observations)
         return observations
 
-class RigidManipulationEnvironment:
-    def __init__(self, grasps: List[GraspDescriptor]):
+class Environment:
+    def __init__(self, grasps: List[GraspTarget]):
         self.grasps = grasps
-    def __call__(self, state: RigidManipulationEnvironmentState, action: RigidManipulationPolicyState) -> RigidManipulationEnvironmentState:
+    def __call__(self, state: EnvironmentState, action: RobotState) -> EnvironmentState:
         new_state = deepcopy(state)
         if state.policy_state.grasped_object_id is not None:
             gripper_delta = action.gripper_pose @ np.linalg.inv(state.policy_state.gripper_pose)
@@ -183,8 +182,8 @@ class RigidManipulationEnvironment:
         new_state.policy_state.grasped_object_id = action.grasped_object_id
         return new_state
     
-class RigidManipulationPolicy:
-    def __init__(self, grasps: List[GraspDescriptor], init_state: RigidManipulationEnvironmentState):
+class Policy:
+    def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState):
         waypoints = []
         object_ids = []
         for i in range(len(grasps)):
@@ -195,7 +194,7 @@ class RigidManipulationPolicy:
             object_ids.append(grasps[i].object_id)
             object_ids.append(None)
         self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids)
-    def __call__(self, state: RigidManipulationEnvironmentState) -> RigidManipulationPolicyState:
+    def __call__(self, state: EnvironmentState) -> RobotState:
         current_pose = state.policy_state.gripper_pose
         current_grasped_object_id = state.policy_state.grasped_object_id
 
@@ -206,7 +205,7 @@ class RigidManipulationPolicy:
             next_pose = current_pose.copy()
             next_object_id = current_grasped_object_id
 
-        next_policy_state = RigidManipulationPolicyState(
+        next_policy_state = RobotState(
             gripper_pose=next_pose,
             grasped_object_id=next_object_id
         )
@@ -216,23 +215,23 @@ class RigidManipulationPolicy:
 if __name__ == "__main__":
     num_cameras = 2
     num_objects = 4
-    env_state = RigidManipulationEnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
+    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
     object_meshes = [trimesh.creation.box(extents=[0.08, 0.08, 0.08]) for _ in range(num_objects)]
     for obj in object_meshes:
         color = np.random.randint(0, 256, size=4)
         color[3] = 255
         obj.visual.vertex_colors = color
-    renderer = RigidManipulationRenderer(scene, object_meshes, num_cameras=num_cameras)
+    renderer = Renderer(scene, object_meshes, num_cameras=num_cameras)
     grasp_start = spatial_utils.translate_pose(np.eye(4), np.array([0, 0, 0.5]))
     grasp_pose = spatial_utils.random_rotation()
     grasp_end = grasp_start.copy()
     grasps = [
-        GraspDescriptor(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
-        GraspDescriptor(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy())
+        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
+        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy())
     ]
-    environment = RigidManipulationEnvironment(grasps)
-    policy = RigidManipulationPolicy(grasps, env_state)
+    environment = Environment(grasps)
+    policy = Policy(grasps, env_state)
     rr.init("Rigid Manipulation", spawn=True)
     for i in tqdm(range(1000)):
         action = policy(env_state)
