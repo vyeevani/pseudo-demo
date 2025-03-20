@@ -58,19 +58,69 @@ def add_widowx_to_scene(scene: pyrender.Scene):
         scene.add_node(node)
     return Arm(model, data, body_nodes)
 
+def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
+    max_iterations = 10000
+    tolerance = 1e-4
+    learning_rate = 0.1
+
+    for i in range(max_iterations):
+        mujoco.mj_forward(model, data)  # Compute forward kinematics
+        
+        # Get current end-effector pose as a homogeneous matrix
+        current_translation = data.xpos[target_body_id]
+        current_rotation = Rotation.from_quat(data.xquat[target_body_id], scalar_first=True).as_matrix()
+        current_pose = np.eye(4)
+        current_pose[:3, :3] = current_rotation
+        current_pose[:3, 3] = current_translation
+        
+        # Compute translational error
+        translation_error = target_pose[:3, 3] - current_translation
+        
+        # Compute rotational error via the rotation difference
+        R_err = target_pose[:3, :3] @ current_rotation.T
+        rotation_error = Rotation.from_matrix(R_err).as_rotvec()  # Axis-angle representation
+        
+        # Combine errors into a 6-dimensional error vector
+        error = np.concatenate([translation_error, rotation_error])
+        
+        # Check if we are close enough
+        if np.linalg.norm(error) < tolerance:
+            print(f"Converged in {i} iterations.")
+            break
+
+        # Compute Jacobian for translation and rotation
+        jacp = np.zeros((3, model.nv))
+        jacr = np.zeros((3, model.nv))
+        mujoco.mj_jacBody(model, data, jacp, jacr, target_body_id)
+        jac = np.concatenate([jacp, jacr], axis=0)
+
+        # Compute change in joint angles using the Jacobian transpose method
+        dq = learning_rate * jac.T @ error
+
+        # Apply joint updates
+        data.qpos[:model.nq] += dq
+        mujoco.mj_forward(model, data)  # Update forward kinematics
+    print(current_pose)
+
 @dataclass
 class Arm:
     model: mujoco.MjModel
     data: mujoco.MjData
     body_nodes: Dict[int, pyrender.Node]
+    initial_pose: np.ndarray
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node]):
         self.model = model
         self.data = data
         self.body_nodes = body_nodes
+        self.initial_pose = np.eye(4)
+        self.initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[8], scalar_first=True).as_matrix()
+        self.initial_pose[:3, 3] = self.data.xpos[8]
         self.go_to_pose()
     def go_to_pose(self, pose: Optional[np.ndarray] = None):
         if pose is None:
             pose = np.eye(4)
+        target_pose = pose @ self.initial_pose
+        ik(self.model, self.data, 8, target_pose)
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
@@ -79,5 +129,7 @@ class Arm:
 
 scene = pyrender.Scene()
 arm = add_widowx_to_scene(scene)
-
+transform = np.eye(4)
+transform[:3, 3] = np.array([0.1, 0.0, 0.1])
+arm.go_to_pose(transform)
 viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
