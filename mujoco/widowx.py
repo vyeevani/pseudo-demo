@@ -56,43 +56,37 @@ def make_visual_nodes(m, asset_path):
         body_to_nodes[parent_body_id].append(node)
     return body_to_nodes
 
-def make_body_nodes(m, d):
-    node_id_to_node_and_parent = {}
+def create_body_nodes(m):
+    body_to_nodes = {}
     for body_id in range(m.nbody):
-        body = m.body(body_id)
-        parent_body_id = body.parentid[0]
+        node = pyrender.Node()
+        body_to_nodes[body_id] = node
+    return body_to_nodes
+
+def update_body_nodes(body_nodes, d):
+    for body_id, body_node in body_nodes.items():
         body_transform = np.eye(4)
-        quat = m.body_quat[body_id]
-        rotation = Rotation.from_quat(quat, scalar_first=True).as_matrix()
-        body_transform[:3, :3] = rotation
-        body_transform[:3, 3] = m.body_pos[body_id]
-        node = pyrender.Node(matrix=body_transform)
-        node_id_to_node_and_parent[body_id] = (node, parent_body_id)
-    return node_id_to_node_and_parent
+        body_transform[:3, :3] = Rotation.from_quat(d.xquat[body_id], scalar_first=True).as_matrix()
+        body_transform[:3, 3] = d.xpos[body_id]
+        body_node.matrix = body_transform
+    return body_nodes
 
 asset_path = widow_mj_description.PACKAGE_PATH + "/assets"
 model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
-# asset_path = "mujoco/assets"
-# model = mujoco.MjModel.from_xml_path("mujoco/test.xml")
 data = mujoco.MjData(model)
-mujoco.mj_step(model, data) # initialize the model
+mujoco.mj_step(model, data)
 
 scene = pyrender.Scene()
 visual_meshes = make_visual_nodes(model, asset_path)
-bodies = make_body_nodes(model, data)
+bodies = create_body_nodes(model)
 
-for node_id, (node, parent_body_id) in bodies.items():
-    parent_node = bodies[parent_body_id][0]
-    if (node_id == parent_body_id):
-        scene.add_node(node)
-    else:
-        print(parent_body_id)
-        scene.add_node(node, parent_node)
+for body_id, body_node in bodies.items():
+    scene.add_node(body_node)
 
-# Add visual meshes to the scene
+bodies = update_body_nodes(bodies, data)
+
 for parent_body_id, visual_nodes in visual_meshes.items():
     for visual_node in visual_nodes:
-        scene.add_node(visual_node, bodies[parent_body_id][0])
+        scene.add_node(visual_node, bodies[parent_body_id])
 
-# Create a viewer to visualize the scene
 viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
