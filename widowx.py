@@ -49,14 +49,13 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_nodes = {body_id: pyrender.Node(children=body_to_geom_nodes.get(body_id, [])) for body_id in range(model.nbody)}
     return body_nodes
 
-def add_widowx_to_scene(scene: pyrender.Scene):
+def widowx_arm():
     model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
-    for node in body_nodes.values():
-        scene.add_node(node)
-    return Arm(model, data, body_nodes, "wx250s/left_finger_link")
+    root_node = pyrender.Node(children=list(body_nodes.values()))
+    return root_node, Arm(model, data, body_nodes, "wx250s/left_finger_link")
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -138,9 +137,9 @@ class Arm:
             body_transform[:3, 3] = self.data.xpos[body_id]
             body_node.matrix = body_transform
 
-scene = pyrender.Scene()
-arm = add_widowx_to_scene(scene)
-transform = np.eye(4)
-transform[:3, 3] = np.array([-0.1, 0.0, 0.1])
-arm.go_to_pose(transform)
-viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
+# scene = pyrender.Scene()
+# arm = add_widowx_to_scene(scene)
+# transform = np.eye(4)
+# transform[:3, 3] = np.array([-0.1, 0.0, 0.1])
+# arm.go_to_pose(transform)
+# viewer = pyrender.Viewer(scene, use_raymond_lighting=True)

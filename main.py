@@ -7,7 +7,7 @@ import trimesh
 import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
-from widowx_gripper import create_gripper_node
+from widowx import widowx_arm, Arm
 from tqdm import tqdm
 
 @dataclass
@@ -114,47 +114,46 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
-    
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 640, image_height: int = 480):
+    arm: Arm
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480):
         num_objects = len(object_meshes)
-        
-        # Camera intrinsics
+        yfov = np.pi/4.0
+        fx = image_width / (2 * np.tan(yfov / 2))
+        fy = image_height / (2 * np.tan(yfov / 2))
         camera_intrinsics = [
             np.array([
-                [image_width / (2 * np.tan(np.pi / 8)), 0, image_width / 2],
-                [0, image_height / (2 * np.tan(np.pi / 8)), image_height / 2],
+                [fx, 0, image_width / 2],
+                [0, fy, image_height / 2],
                 [0, 0, 1]
             ])
             for _ in range(num_cameras)
         ]
 
         camera_nodes = [
-            pyrender.Node(camera=pyrender.PerspectiveCamera(yfov=np.pi / 4.0, aspectRatio=image_width / image_height), matrix=np.eye(4))
+            pyrender.Node(camera=pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=image_width / image_height), matrix=np.eye(4))
             for _ in range(num_cameras)
         ]
         object_nodes = {i: pyrender.Node(mesh=pyrender.Mesh.from_trimesh(object_meshes[i]), matrix=np.eye(4)) for i in range(num_objects)}
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
 
-        gripper_node = create_gripper_node()
-        rotation_y = trimesh.transformations.rotation_matrix(np.radians(90), [0, 1, 0])
-        rotation_x = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
-        transform = trimesh.transformations.concatenate_matrices(rotation_y, rotation_x)
-        gripper_node.matrix = transform
-        gripper_node = pyrender.Node(children=[gripper_node])
-        scene.add_node(gripper_node)
+        arm_node, self.arm = widowx_arm()
+        arm_transform = np.eye(4)
+        arm_transform[0, 3] = 1
+        arm_node.matrix = arm_transform
+        scene.add_node(arm_node)
+
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
 
         self.renderer = renderer
         self.scene = scene
         self.camera_intrinsics = camera_intrinsics
-        self.gripper_node = gripper_node
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
     def __call__(self, state: EnvironmentState):
         for obj_id, obj_pose in state.object_poses.items():
             self.object_nodes[obj_id].matrix = obj_pose
-        self.gripper_node.matrix = state.policy_state.gripper_pose
+        self.arm.go_to_pose(state.policy_state.gripper_pose)
         observations = []
         for cam_idx, camera_node in enumerate(self.camera_nodes):
             camera_node.matrix = state.camera_poses[cam_idx]
@@ -237,7 +236,7 @@ if __name__ == "__main__":
         action = policy(env_state)
         env_state = environment(env_state, action)
         observations = renderer(env_state)
-        rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP)
+        # rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP)
         for camera_id, camera_data in enumerate(observations):
             rr.log(
                 f"world/{camera_id}",
