@@ -85,7 +85,6 @@ def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_p
         
         # Check if we are close enough
         if np.linalg.norm(error) < tolerance:
-            print(f"Converged in {i} iterations.")
             break
 
         # Compute Jacobian for translation and rotation
@@ -100,7 +99,6 @@ def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_p
         # Apply joint updates
         data.qpos[:model.nq] += dq
         mujoco.mj_forward(model, data)  # Update forward kinematics
-    print(current_pose)
 
 @dataclass
 class Arm:
@@ -130,6 +128,6 @@ class Arm:
 scene = pyrender.Scene()
 arm = add_widowx_to_scene(scene)
 transform = np.eye(4)
-transform[:3, 3] = np.array([0.1, 0.0, 0.1])
+transform[:3, 3] = np.array([-0.1, 0.0, 0.1])
 arm.go_to_pose(transform)
 viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
