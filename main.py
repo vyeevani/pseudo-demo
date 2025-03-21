@@ -16,6 +16,7 @@ class GraspTarget:
     start_pose: np.ndarray
     grasp_pose: np.ndarray
     end_pose: np.ndarray
+    object_thickness: float
 
 @dataclass
 class RobotState:
@@ -185,7 +186,9 @@ class Policy:
         object_ids = []
         for i in range(len(grasps)):
             waypoints.append(grasps[i].start_pose.copy())
-            waypoints.append(init_state.object_poses[grasps[i].object_id] @ grasps[i].grasp_pose.copy())
+            translation_away = np.eye(4)
+            translation_away[0, 3] = -grasps[i].object_thickness
+            waypoints.append(init_state.object_poses[grasps[i].object_id] @ grasps[i].grasp_pose.copy() @ translation_away)
             waypoints.append(grasps[i].end_pose.copy())
             object_ids.append(None)
             object_ids.append(grasps[i].object_id)
@@ -214,7 +217,8 @@ if __name__ == "__main__":
     num_objects = 4
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
-    object_meshes = [trimesh.creation.box(extents=[0.08, 0.08, 0.08]) for _ in range(num_objects)]
+    object_thickness = 0.08
+    object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
     for obj in object_meshes:
         color = np.random.randint(0, 256, size=4)
         color[3] = 255
@@ -224,8 +228,8 @@ if __name__ == "__main__":
     grasp_pose = spatial_utils.random_rotation()
     grasp_end = grasp_start.copy()
     grasps = [
-        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
-        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
+        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy(), object_thickness=object_thickness),
+        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy(), object_thickness=object_thickness),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
