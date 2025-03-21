@@ -184,14 +184,14 @@ class Policy:
     def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState):
         waypoints = []
         object_ids = []
-        for i in range(len(grasps)):
-            waypoints.append(grasps[i].start_pose.copy())
+        for grasp in grasps:
+            waypoints.append(grasp.start_pose.copy())
             translation_away = np.eye(4)
-            translation_away[0, 3] = -grasps[i].object_thickness
-            waypoints.append(init_state.object_poses[grasps[i].object_id] @ grasps[i].grasp_pose.copy() @ translation_away)
-            waypoints.append(grasps[i].end_pose.copy())
+            translation_away[0, 3] = -grasp.object_thickness
+            waypoints.append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy() @ translation_away)
+            waypoints.append(grasp.end_pose.copy())
             object_ids.append(None)
-            object_ids.append(grasps[i].object_id)
+            object_ids.append(grasp.object_id)
             object_ids.append(None)
         self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids)
     def __call__(self, state: EnvironmentState) -> RobotState:
