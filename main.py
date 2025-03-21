@@ -30,7 +30,6 @@ class EnvironmentState:
     policy_state: RobotState
 
     def __init__(self, num_objects: int, num_cameras: int, bounding_box_size: float = 0.6):
-        # Object constants
         object_poses = {
             i: spatial_utils.translate_pose(
                 spatial_utils.random_rotation(random_z=True, random_y=False, random_x=False),
@@ -137,10 +136,9 @@ class Renderer:
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
 
-        arm_node, self.arm = widowx_arm()
-        arm_transform = np.eye(4)
-        arm_transform[0, 3] = 1
-        arm_node.matrix = arm_transform
+        translation_matrix = np.eye(4)
+        translation_matrix[0, 3] = -0.25
+        arm_node, self.arm = widowx_arm(translation_matrix)
         scene.add_node(arm_node)
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
@@ -212,7 +210,7 @@ class Policy:
         return next_policy_state
     
 if __name__ == "__main__":
-    num_cameras = 2
+    num_cameras = 4
     num_objects = 4
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
@@ -227,12 +225,12 @@ if __name__ == "__main__":
     grasp_end = grasp_start.copy()
     grasps = [
         GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
-        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy())
+        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy()),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
     rr.init("Rigid Manipulation", spawn=True)
-    for i in tqdm(range(1000)):
+    for i in tqdm(range(250)):
         action = policy(env_state)
         env_state = environment(env_state, action)
         observations = renderer(env_state)

@@ -49,13 +49,13 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_nodes = {body_id: pyrender.Node(children=body_to_geom_nodes.get(body_id, [])) for body_id in range(model.nbody)}
     return body_nodes
 
-def widowx_arm():
+def widowx_arm(root_transform: np.ndarray):
     model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
     root_node = pyrender.Node(children=list(body_nodes.values()))
-    return root_node, Arm(model, data, body_nodes, "wx250s/left_finger_link")
+    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -104,42 +104,35 @@ class Arm:
     model: mujoco.MjModel
     data: mujoco.MjData
     body_nodes: Dict[int, pyrender.Node]
-    initial_pose: np.ndarray
+    initial_poses: Dict[int, np.ndarray]
     eef_name: str
+    root_transform: np.ndarray
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, root_transform: Optional[np.ndarray] = None):
         self.model = model
         self.data = data
         self.body_nodes = body_nodes
-        self.initial_pose = np.eye(4)
         self.eef_name = eef_body_name
+        self.root_transform = root_transform if root_transform is not None else np.eye(4)
         
-        # Find the body id for the end-effector name
-        eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
+        self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
         
-        self.initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[eef_id], scalar_first=True).as_matrix()
-        self.initial_pose[:3, 3] = self.data.xpos[eef_id]
+        self.initial_poses = {}
+        for body_id in self.body_nodes.keys():
+            initial_pose = np.eye(4)
+            initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
+            initial_pose[:3, 3] = self.data.xpos[body_id]
+            self.initial_poses[body_id] = initial_pose
         self.go_to_pose()
     
     def go_to_pose(self, pose: Optional[np.ndarray] = None):
         if pose is None:
             pose = np.eye(4)
-        
-        # Find the body id for the end-effector name
-        eef_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
-        
-        target_pose = pose @ self.initial_pose
-        ik(self.model, self.data, eef_id, target_pose)
-        
+        root_node = self.model.body_rootid[self.eef_id]
+        target_pose =  self.initial_poses[root_node] @ (np.linalg.inv(self.root_transform) @ pose)
+        ik(self.model, self.data, self.eef_id, target_pose)
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
             body_transform[:3, 3] = self.data.xpos[body_id]
-            body_node.matrix = body_transform
-
-# scene = pyrender.Scene()
-# arm = add_widowx_to_scene(scene)
-# transform = np.eye(4)
-# transform[:3, 3] = np.array([-0.1, 0.0, 0.1])
-# arm.go_to_pose(transform)
-# viewer = pyrender.Viewer(scene, use_raymond_lighting=True)
+            body_node.matrix = self.root_transform @ body_transform
