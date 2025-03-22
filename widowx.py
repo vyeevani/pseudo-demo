@@ -55,14 +55,15 @@ def widowx_arm(root_transform: np.ndarray):
     mujoco.mj_forward(model, data)
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
     root_node = pyrender.Node(children=list(body_nodes.values()))
-    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
+    # return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
+    return root_node, Arm(model, data, body_nodes, "wx250s/left_finger_link", root_transform)
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
     tolerance = 1e-4
     learning_rate = 0.1
 
-    for i in range(max_iterations):
+    for _ in range(max_iterations):
         mujoco.mj_forward(model, data)  # Compute forward kinematics
         
         # Get current end-effector pose as a homogeneous matrix
@@ -97,6 +98,13 @@ def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_p
 
         # Apply joint updates
         data.qpos[:model.nq] += dq
+        # Apply joint constraints
+        for i in range(model.nq):
+            if data.qpos[i] < model.jnt_range[i][0]:
+                data.qpos[i] = model.jnt_range[i][0]
+            elif data.qpos[i] > model.jnt_range[i][1]:
+                data.qpos[i] = model.jnt_range[i][1]
+        # Apply equality constraints
         mujoco.mj_forward(model, data)  # Update forward kinematics
 
 @dataclass
