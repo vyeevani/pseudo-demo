@@ -9,6 +9,7 @@ import spatial as spatial_utils
 import trajectory as trajectory_utils
 from widowx import widowx_arm, Arm
 from tqdm import tqdm
+import trimesh_utils as trimesh_utils
 
 @dataclass
 class GraspTarget:
@@ -16,7 +17,6 @@ class GraspTarget:
     start_pose: np.ndarray
     grasp_pose: np.ndarray
     end_pose: np.ndarray
-    object_thickness: float
 
 @dataclass
 class RobotState:
@@ -186,12 +186,10 @@ class Policy:
         object_ids = []
         for grasp in grasps:
             waypoints.append(grasp.start_pose.copy())
-            translation_away = np.eye(4)
-            translation_away[0, 3] = -grasp.object_thickness
-            waypoints.append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy() @ translation_away)
-            waypoints.append(grasp.end_pose.copy())
             object_ids.append(None)
+            waypoints.append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy())
             object_ids.append(grasp.object_id)
+            waypoints.append(grasp.end_pose.copy())
             object_ids.append(None)
         self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids)
     def __call__(self, state: EnvironmentState) -> RobotState:
@@ -214,22 +212,24 @@ class Policy:
     
 if __name__ == "__main__":
     num_cameras = 4
-    num_objects = 4
+    num_objects = 1
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
     object_thickness = 0.08
     object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
+    gripper_length = 0.08
+    gripper_transform = spatial_utils.translate_pose(np.eye(4), np.array([-gripper_length, 0, 0]))
+    object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) @ gripper_transform for obj in object_meshes]
     for obj in object_meshes:
         color = np.random.randint(0, 256, size=4)
         color[3] = 255
         obj.visual.vertex_colors = color
     renderer = Renderer(scene, object_meshes, num_cameras=num_cameras)
     grasp_start = spatial_utils.translate_pose(np.eye(4), np.array([0, 0, 0.5]))
-    grasp_pose = spatial_utils.random_rotation()
     grasp_end = grasp_start.copy()
     grasps = [
-        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy(), object_thickness=object_thickness),
-        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=grasp_pose.copy(), end_pose=grasp_end.copy(), object_thickness=object_thickness),
+        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
+        # GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
