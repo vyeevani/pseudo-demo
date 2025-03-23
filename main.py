@@ -30,19 +30,19 @@ class EnvironmentState:
     finished: bool
     policy_state: RobotState
 
-    def __init__(self, num_objects: int, num_cameras: int, bounding_box_radius: float = 0.2):
-        bounding_box_x = np.random.uniform(0, bounding_box_radius)
-        bounding_box_y = np.sqrt(bounding_box_radius**2 - bounding_box_x**2) * np.random.choice([-1, 1])
-        object_poses = {
-            i: spatial_utils.translate_pose(
+    def __init__(self, num_objects: int, num_cameras: int, bounding_box_radius: float = 0.1):
+        object_poses = {}
+        for i in range(num_objects):
+            bounding_box_x = np.random.uniform(0, bounding_box_radius)
+            bounding_box_y = np.sqrt(bounding_box_radius**2 - bounding_box_x**2) * np.random.choice([-1, 1])
+            object_poses[i] = spatial_utils.translate_pose(
                 spatial_utils.random_rotation(random_z=True, random_y=False, random_x=False),
                 np.array([
                     bounding_box_x,
                     bounding_box_y,
                     0
                 ])
-            ) for i in range(num_objects)
-        }
+            )
         
         # Camera constants
         camera_poses = [
@@ -214,14 +214,11 @@ class Policy:
     
 if __name__ == "__main__":
     num_cameras = 4
-    num_objects = 1
+    num_objects = 2
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
     object_thickness = 0.08
     object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
-    # gripper_length = 0.066
-    # gripper_transform = spatial_utils.translate_pose(np.eye(4), np.array([-gripper_length, 0, 0]))
-    # object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) @ gripper_transform for obj in object_meshes]
     object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
     for obj in object_meshes:
         color = np.random.randint(0, 256, size=4)
@@ -232,7 +229,7 @@ if __name__ == "__main__":
     grasp_end = grasp_start.copy()
     grasps = [
         GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
-        # GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
+        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)

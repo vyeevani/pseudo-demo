@@ -55,8 +55,7 @@ def widowx_arm(root_transform: np.ndarray):
     mujoco.mj_forward(model, data)
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
     root_node = pyrender.Node(children=list(body_nodes.values()))
-    # return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
-    return root_node, Arm(model, data, body_nodes, "wx250s/left_finger_link", root_transform)
+    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -98,13 +97,6 @@ def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_p
 
         # Apply joint updates
         data.qpos[:model.nq] += dq
-        # Apply joint constraints
-        for i in range(model.nq):
-            if data.qpos[i] < model.jnt_range[i][0]:
-                data.qpos[i] = model.jnt_range[i][0]
-            elif data.qpos[i] > model.jnt_range[i][1]:
-                data.qpos[i] = model.jnt_range[i][1]
-        # Apply equality constraints
         mujoco.mj_forward(model, data)  # Update forward kinematics
 
 @dataclass
@@ -115,6 +107,7 @@ class Arm:
     initial_poses: Dict[int, np.ndarray]
     eef_name: str
     root_transform: np.ndarray
+    gripper_to_root_transform: np.ndarray
     
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, root_transform: Optional[np.ndarray] = None):
         self.model = model
@@ -131,13 +124,30 @@ class Arm:
             initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
             initial_pose[:3, 3] = self.data.xpos[body_id]
             self.initial_poses[body_id] = initial_pose
+        
+        # Calculate gripper_to_motor_vector
+        child_ids = [child_id for child_id in range(self.model.nbody) if self.model.body_parentid[child_id] == self.eef_id]
+        child_vectors = []
+        for child_id in child_ids:
+            child_vector = self.data.xpos[child_id] - self.data.xpos[self.eef_id]
+            child_vectors.append(child_vector)
+        
+        # Average vector distance of the children
+        if child_vectors:
+            avg_vector = np.mean(child_vectors, axis=0)
+        else:
+            avg_vector = np.zeros(3)
+        
+        self.gripper_to_root_transform = np.eye(4)
+        self.gripper_to_root_transform[:3, 3] = -avg_vector
+        
         self.go_to_pose()
     
     def go_to_pose(self, pose: Optional[np.ndarray] = None):
         if pose is None:
             pose = np.eye(4)
         root_node = self.model.body_rootid[self.eef_id]
-        target_pose =  self.initial_poses[root_node] @ (np.linalg.inv(self.root_transform) @ pose)
+        target_pose = self.initial_poses[root_node] @ np.linalg.inv(self.root_transform) @ self.gripper_to_root_transform @ pose
         ik(self.model, self.data, self.eef_id, target_pose)
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
