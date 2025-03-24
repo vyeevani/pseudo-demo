@@ -117,7 +117,7 @@ class Renderer:
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
     arm: Arm
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480):
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480, arm_transform: np.ndarray = np.eye(4)):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
         fx = image_width / (2 * np.tan(yfov / 2))
@@ -139,9 +139,7 @@ class Renderer:
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
 
-        translation_matrix = np.eye(4)
-        translation_matrix[0, 3] = -0.25
-        arm_node, self.arm = widowx_arm(translation_matrix)
+        arm_node, self.arm = widowx_arm(arm_transform)
         scene.add_node(arm_node)
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
@@ -214,7 +212,7 @@ class Policy:
     
 if __name__ == "__main__":
     num_cameras = 4
-    num_objects = 1
+    num_objects = 4
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
     object_thickness = 0.08
@@ -224,15 +222,27 @@ if __name__ == "__main__":
         color = np.random.randint(0, 256, size=4)
         color[3] = 255
         obj.visual.vertex_colors = color
-    renderer = Renderer(scene, object_meshes, num_cameras=num_cameras)
-    grasp_start = spatial_utils.translate_pose(np.eye(4), np.array([0, 0, 0.25]))
+
+    arm_transform = np.array([
+        [np.cos(np.pi/4), -np.sin(np.pi/4), 0, 0],
+        [np.sin(np.pi/4), np.cos(np.pi/4), 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
+    arm_transform[0, 3] = -0.25
+    
+    grasp_start_transform = np.eye(4)
+    grasp_start_transform[2, 3] = 0.25
+    grasp_start_transform[0, 3] = 0.25
+    grasp_start = arm_transform @ grasp_start_transform
     grasp_end = grasp_start.copy()
     grasps = [
         GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
-        # GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
+        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
+    renderer = Renderer(scene, object_meshes, num_cameras=num_cameras, arm_transform=arm_transform)
     rr.init("Rigid Manipulation", spawn=True)
     for i in tqdm(range(250)):
         action = policy(env_state)
