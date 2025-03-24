@@ -45,8 +45,7 @@ def slerp(q1: np.ndarray, q2: np.ndarray, t: float) -> np.ndarray:
 def linear_interpolation(
     waypoints: List[np.ndarray],
     metadata: List[Any],
-    resolution: float = 0.01,
-    angle_resolution: float = np.pi/60,
+    num_steps: int = 100,
 ) -> Tuple[List[np.ndarray], List[Any]]:
     """Linear interpolation between waypoints."""
     interpolated_poses = []
@@ -57,16 +56,7 @@ def linear_interpolation(
         end_pose = waypoints[i + 1]
         start_metadata = metadata[i]
         
-        # Calculate number of steps based on distance
-        pos_diff = np.linalg.norm(end_pose[:3, 3] - start_pose[:3, 3])
-        rot_diff = np.arccos((np.trace(start_pose[:3, :3].T @ end_pose[:3, :3]) - 1) / 2)
-        steps = max(
-            int(pos_diff / resolution),
-            int(rot_diff / angle_resolution)
-        )
-        steps = max(steps, 1)
-        
-        for t in np.linspace(0, 1, steps):
+        for t in np.linspace(0, 1, num_steps):
             # Interpolate position
             pos = (1 - t) * start_pose[:3, 3] + t * end_pose[:3, 3]
             
@@ -94,8 +84,7 @@ def linear_interpolation(
 def cubic_interpolation(
     waypoints: List[np.ndarray],
     metadata: List[Any],
-    resolution: float = 0.01,
-    angle_resolution: float = np.pi/60,
+    num_steps: int = 100,
 ) -> Tuple[List[np.ndarray], List[Any]]:
     """Cubic spline interpolation for position, SLERP for rotation."""
     # Extract positions and create parameter space
@@ -105,12 +94,6 @@ def cubic_interpolation(
     # Fit cubic spline to positions
     cs = CubicSpline(t, positions)
     
-    # Calculate total path length for step size
-    total_length = 0
-    for i in range(len(waypoints) - 1):
-        total_length += np.linalg.norm(waypoints[i+1][:3, 3] - waypoints[i][:3, 3])
-    
-    num_steps = int(total_length / resolution)
     t_interp = np.linspace(0, len(waypoints) - 1, num_steps)
     
     interpolated_poses = []
@@ -148,8 +131,7 @@ def cubic_interpolation(
 def spherical_interpolation(
     waypoints: List[np.ndarray],
     metadata: List[Any],
-    resolution: float = 0.01,
-    angle_resolution: float = np.pi/60,
+    num_steps: int = 100,
 ) -> Tuple[List[np.ndarray], List[Any]]:
     """Interpolation while maintaining constant distance from origin."""
     interpolated_poses = []
@@ -173,14 +155,7 @@ def spherical_interpolation(
         end_theta = np.arccos(end_pos[2] / end_r)
         end_phi = np.arctan2(end_pos[1], end_pos[0])
         
-        # Calculate number of steps
-        angle_diff = np.sqrt(
-            (end_theta - start_theta)**2 + 
-            (np.sin(start_theta) * (end_phi - start_phi))**2
-        )
-        steps = max(int(angle_diff / angle_resolution), 1)
-        
-        for t in np.linspace(0, 1, steps):
+        for t in np.linspace(0, 1, num_steps):
             # Interpolate spherical coordinates
             r = (1 - t) * start_r + t * end_r
             theta = (1 - t) * start_theta + t * end_theta

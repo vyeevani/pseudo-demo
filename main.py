@@ -183,7 +183,7 @@ class Environment:
         return new_state
     
 class Policy:
-    def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState):
+    def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState, num_steps: int = 25):
         waypoints = []
         object_ids = []
         for grasp in grasps:
@@ -193,7 +193,7 @@ class Policy:
             object_ids.append(grasp.object_id)
             waypoints.append(grasp.end_pose.copy())
             object_ids.append(None)
-        self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids)
+        self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids, num_steps=num_steps)
     def __call__(self, state: EnvironmentState) -> RobotState:
         current_pose = state.policy_state.gripper_pose
         current_grasped_object_id = state.policy_state.grasped_object_id
@@ -214,7 +214,7 @@ class Policy:
     
 if __name__ == "__main__":
     num_cameras = 4
-    num_objects = 2
+    num_objects = 1
     env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     scene = default_scene()
     object_thickness = 0.08
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     grasp_end = grasp_start.copy()
     grasps = [
         GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
-        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
+        # GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
     ]
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
