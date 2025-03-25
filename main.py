@@ -14,14 +14,19 @@ import trimesh_utils as trimesh_utils
 @dataclass
 class GraspTarget:
     object_id: int
+    arm_id: int  # 0 for first arm, 1 for second arm
     start_pose: np.ndarray
     grasp_pose: np.ndarray
     end_pose: np.ndarray
 
 @dataclass
 class RobotState:
-    gripper_pose: np.ndarray
-    grasped_object_id: Optional[int] = None
+    gripper_poses: Dict[int, np.ndarray]
+    grasped_object_ids: Dict[int, Optional[int]] = None
+    
+    def __init__(self, arm_ids: List[int] = [0, 1]):
+        self.gripper_poses = {arm_id: np.eye(4) for arm_id in arm_ids}
+        self.grasped_object_ids = {arm_id: None for arm_id in arm_ids}
 
 @dataclass
 class EnvironmentState:
@@ -30,7 +35,7 @@ class EnvironmentState:
     finished: bool
     policy_state: RobotState
 
-    def __init__(self, num_objects: int, num_cameras: int, bounding_box_radius: float = 0.1):
+    def __init__(self, num_objects: int, num_cameras: int, arm_ids: List[int] = [0, 1], bounding_box_radius: float = 0.1):
         object_poses = {}
         for i in range(num_objects):
             bounding_box_x = np.random.uniform(0, bounding_box_radius)
@@ -57,10 +62,7 @@ class EnvironmentState:
         self.camera_poses = camera_poses
         self.object_poses = object_poses
         self.finished = False
-        self.policy_state = RobotState(
-            gripper_pose=np.eye(4),
-            grasped_object_id=None
-        )
+        self.policy_state = RobotState(arm_ids=arm_ids)
 
 def default_scene(add_table: bool = False) -> pyrender.Scene:
     scene = pyrender.Scene()
@@ -116,8 +118,8 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
-    arm: Arm
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480, arm_transform: np.ndarray = np.eye(4)):
+    arms: Dict[int, Arm]
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480, arm_transforms: Dict[int, np.ndarray] = {0: np.eye(4)}):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
         fx = image_width / (2 * np.tan(yfov / 2))
@@ -139,8 +141,12 @@ class Renderer:
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
 
-        arm_node, self.arm = widowx_arm(arm_transform)
-        scene.add_node(arm_node)
+        # Add arms
+        self.arms = {}
+        for arm_id, arm_transform in arm_transforms.items():
+            arm_node, arm = widowx_arm(arm_transform)
+            scene.add_node(arm_node)
+            self.arms[arm_id] = arm
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
 
@@ -152,7 +158,12 @@ class Renderer:
     def __call__(self, state: EnvironmentState):
         for obj_id, obj_pose in state.object_poses.items():
             self.object_nodes[obj_id].matrix = obj_pose
-        self.arm.go_to_pose(state.policy_state.gripper_pose)
+        
+        # Control all arms based on their poses in policy state
+        for arm_id, arm in self.arms.items():
+            if arm_id in state.policy_state.gripper_poses:
+                arm.go_to_pose(state.policy_state.gripper_poses[arm_id])
+        
         observations = []
         for cam_idx, camera_node in enumerate(self.camera_nodes):
             camera_node.matrix = state.camera_poses[cam_idx]
@@ -173,48 +184,77 @@ class Environment:
         self.grasps = grasps
     def __call__(self, state: EnvironmentState, action: RobotState) -> EnvironmentState:
         new_state = deepcopy(state)
-        if state.policy_state.grasped_object_id is not None:
-            gripper_delta = action.gripper_pose @ np.linalg.inv(state.policy_state.gripper_pose)
-            new_state.object_poses[state.policy_state.grasped_object_id] = gripper_delta @ state.object_poses[state.policy_state.grasped_object_id]        
-        new_state.policy_state.gripper_pose = action.gripper_pose
-        new_state.policy_state.grasped_object_id = action.grasped_object_id
+        
+        # For each arm, update object position if grasping something
+        for arm_id, grasped_object_id in state.policy_state.grasped_object_ids.items():
+            if grasped_object_id is not None:
+                gripper_delta = action.gripper_poses[arm_id] @ np.linalg.inv(state.policy_state.gripper_poses[arm_id])
+                new_state.object_poses[grasped_object_id] = gripper_delta @ state.object_poses[grasped_object_id]
+        
+        new_state.policy_state.gripper_poses = action.gripper_poses
+        new_state.policy_state.grasped_object_ids = action.grasped_object_ids
         return new_state
     
 class Policy:
     def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState, num_steps: int = 25):
-        waypoints = []
-        object_ids = []
+        # Create waypoints for each arm separately
+        arm_waypoints = {}
+        arm_object_ids = {}
+        
+        # Initialize empty lists for all arms in the state
+        for arm_id in init_state.policy_state.gripper_poses.keys():
+            arm_waypoints[arm_id] = []
+            arm_object_ids[arm_id] = []
+        
         for grasp in grasps:
-            waypoints.append(grasp.start_pose.copy())
-            object_ids.append(None)
-            waypoints.append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy())
-            object_ids.append(grasp.object_id)
-            waypoints.append(grasp.end_pose.copy())
-            object_ids.append(None)
-        self.poses, self.object_ids = trajectory_utils.linear_interpolation(waypoints, object_ids, num_steps=num_steps)
+            arm_id = grasp.arm_id
+            arm_waypoints[arm_id].append(grasp.start_pose.copy())
+            arm_object_ids[arm_id].append(None)
+            arm_waypoints[arm_id].append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy())
+            arm_object_ids[arm_id].append(grasp.object_id)
+            arm_waypoints[arm_id].append(grasp.end_pose.copy())
+            arm_object_ids[arm_id].append(None)
+        
+        # Generate separate trajectories for each arm
+        self.arm_trajectories = {}
+        self.arm_object_id_trajectories = {}
+        
+        for arm_id in arm_waypoints.keys():
+            if arm_waypoints[arm_id]:  # If this arm has waypoints
+                poses, object_ids = trajectory_utils.linear_interpolation(
+                    arm_waypoints[arm_id], 
+                    arm_object_ids[arm_id], 
+                    num_steps=num_steps
+                )
+                self.arm_trajectories[arm_id] = poses
+                self.arm_object_id_trajectories[arm_id] = object_ids
+            else:  # If this arm has no waypoints, create empty lists
+                self.arm_trajectories[arm_id] = []
+                self.arm_object_id_trajectories[arm_id] = []
+                
     def __call__(self, state: EnvironmentState) -> RobotState:
-        current_pose = state.policy_state.gripper_pose
-        current_grasped_object_id = state.policy_state.grasped_object_id
-
-        if len(self.poses) > 0:
-            next_pose = self.poses.pop(0).copy()
-            next_object_id = self.object_ids.pop(0)
-        else:
-            next_pose = current_pose.copy()
-            next_object_id = current_grasped_object_id
-
-        next_policy_state = RobotState(
-            gripper_pose=next_pose,
-            grasped_object_id=next_object_id
-        )
+        # Get all arm IDs from current state
+        arm_ids = list(state.policy_state.gripper_poses.keys())
+        next_policy_state = RobotState(arm_ids=arm_ids)
+        
+        # Copy current state
+        for arm_id in arm_ids:
+            next_policy_state.gripper_poses[arm_id] = state.policy_state.gripper_poses[arm_id].copy()
+            next_policy_state.grasped_object_ids[arm_id] = state.policy_state.grasped_object_ids[arm_id]
+            
+        # Update each arm if it has remaining waypoints
+        for arm_id in self.arm_trajectories.keys():
+            if self.arm_trajectories[arm_id]:  # If this arm has waypoints left
+                next_policy_state.gripper_poses[arm_id] = self.arm_trajectories[arm_id].pop(0).copy()
+                next_policy_state.grasped_object_ids[arm_id] = self.arm_object_id_trajectories[arm_id].pop(0)
 
         return next_policy_state
     
 if __name__ == "__main__":
     num_cameras = 4
     num_objects = 4
+    arm_ids = [0, 1]
 
-    # setup the objects
     object_thickness = 0.08
     object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
     object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
@@ -223,29 +263,45 @@ if __name__ == "__main__":
         color[3] = 255
         obj.visual.vertex_colors = color
 
-    # setup the arm
-    arm_transform = np.array([
-        [np.cos(np.pi/2), -np.sin(np.pi/2), 0, 0],
-        [np.sin(np.pi/2), np.cos(np.pi/2), 0, 0],
+    arm_transforms = {}
+
+    arm_transforms[0] = np.array([
+        [-1, 0, 0, 0.25],
+        [0, -1, 0, 0],
         [0, 0, 1, 0],
         [0, 0, 0, 1]
     ])
-    arm_transform[0, 3] = -0.25
+    arm_transforms[1] = np.array([
+        [1, 0, 0, -0.25],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
     
-    # pick grasps
-    grasp_start_transform = np.eye(4)
-    grasp_start_transform[2, 3] = 0.25
-    grasp_start_transform[0, 3] = 0.25
-    grasp_start = arm_transform @ grasp_start_transform
-    grasp_end = grasp_start.copy()
+    # Arm 0 grasps
+    grasp_start_transform0 = np.eye(4)
+    grasp_start_transform0[2, 3] = 0.25
+    grasp_start_transform0[0, 3] = 0.25
+    grasp_start0 = arm_transforms[0] @ grasp_start_transform0
+    grasp_end0 = grasp_start0.copy()
+    
+    # Arm 1 grasps
+    grasp_start_transform1 = np.eye(4)
+    grasp_start_transform1[2, 3] = 0.25
+    grasp_start_transform1[0, 3] = 0.25
+    grasp_start1 = arm_transforms[1] @ grasp_start_transform1
+    grasp_end1 = grasp_start1.copy()
+    
+    # Create grasps for both arms
     grasps = [
-        GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
-        GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
+        GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
+        GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
     ]
-    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
+    
+    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras, arm_ids=arm_ids)
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
-    renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transform=arm_transform)
+    renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
     rr.init("Rigid Manipulation", spawn=True)
     for i in tqdm(range(250)):
         action = policy(env_state)
