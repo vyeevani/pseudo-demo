@@ -1,5 +1,35 @@
 import numpy as np
 
+import numpy as np
+
+def look_at_rotation(default_forward, desired_forward, default_up, desired_up) -> np.ndarray:
+    def normalize(v):
+        norm = np.linalg.norm(v)
+        if norm == 0:
+            raise ValueError("Zero vector cannot be normalized.")
+        return v / norm
+
+    # Normalize forward vectors.
+    default_f = normalize(default_forward)
+    desired_f = normalize(desired_forward)
+
+    # Compute right vectors (ensure they are perpendicular to forward).
+    default_r = normalize(np.cross(default_up, default_f))
+    desired_r = normalize(np.cross(desired_up, desired_f))
+
+    # Recompute up vectors to ensure orthogonality.
+    default_u = np.cross(default_f, default_r)
+    desired_u = np.cross(desired_f, desired_r)
+
+    # Form basis matrices. Each column represents a basis vector: [right, up, forward].
+    default_basis = np.stack([default_r, default_u, default_f], axis=1)
+    desired_basis = np.stack([desired_r, desired_u, desired_f], axis=1)
+
+    # Calculate the rotation matrix.
+    rotation_matrix = desired_basis @ default_basis.T
+    return rotation_matrix
+
+
 def random_spherical_coordinates(
         min_dist: float = 1.0, 
         max_dist: float = 2.0, 
