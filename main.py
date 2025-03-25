@@ -213,8 +213,8 @@ class Policy:
 if __name__ == "__main__":
     num_cameras = 4
     num_objects = 4
-    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
-    scene = default_scene()
+
+    # setup the objects
     object_thickness = 0.08
     object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
     object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
@@ -223,14 +223,16 @@ if __name__ == "__main__":
         color[3] = 255
         obj.visual.vertex_colors = color
 
+    # setup the arm
     arm_transform = np.array([
-        [np.cos(np.pi/4), -np.sin(np.pi/4), 0, 0],
-        [np.sin(np.pi/4), np.cos(np.pi/4), 0, 0],
+        [np.cos(np.pi/2), -np.sin(np.pi/2), 0, 0],
+        [np.sin(np.pi/2), np.cos(np.pi/2), 0, 0],
         [0, 0, 1, 0],
         [0, 0, 0, 1]
     ])
     arm_transform[0, 3] = -0.25
     
+    # pick grasps
     grasp_start_transform = np.eye(4)
     grasp_start_transform[2, 3] = 0.25
     grasp_start_transform[0, 3] = 0.25
@@ -240,15 +242,15 @@ if __name__ == "__main__":
         GraspTarget(object_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end.copy()),
         GraspTarget(object_id=1, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end.copy()),
     ]
+    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras)
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
-    renderer = Renderer(scene, object_meshes, num_cameras=num_cameras, arm_transform=arm_transform)
+    renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transform=arm_transform)
     rr.init("Rigid Manipulation", spawn=True)
     for i in tqdm(range(250)):
         action = policy(env_state)
         env_state = environment(env_state, action)
         observations = renderer(env_state)
-        # rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP)
         for camera_id, camera_data in enumerate(observations):
             rr.log(
                 f"world/{camera_id}",
