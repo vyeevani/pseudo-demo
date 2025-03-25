@@ -49,11 +49,12 @@ class CameraState:
     pose: np.ndarray
 
     def __init__(self):
-        self.pose = spatial_utils.look_at_transform(
-            spatial_utils.spherical_to_cartesian(
-                *spatial_utils.random_spherical_coordinates()
-            )
+        default_forward = np.array([0, 0, -1])
+        camera_pos = spatial_utils.spherical_to_cartesian(
+            *spatial_utils.random_spherical_coordinates()
         )
+        self.pose = trimesh.geometry.align_vectors(default_forward, 0 - camera_pos)
+        self.pose[:3, 3] = camera_pos
 
 @dataclass
 class EnvironmentState:
@@ -282,19 +283,22 @@ if __name__ == "__main__":
 
     for demo in range(num_demonstrations):
         arm_transforms = {}
-        arm_transforms[0] = np.array([
-            [-1, 0, 0, 0.35],
-            [0, -1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
-        
-        arm_transforms[1] = np.array([
-            [1, 0, 0, -0.35],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+
+        default_forward = np.array([-1, 0, 0])
+
+        arm_0_translation = spatial_utils.spherical_to_cartesian(
+            *spatial_utils.random_spherical_coordinates(min_dist=-0.35, max_dist=-0.45, randomize_elevation=False)
+        )
+        arm_0_transform = trimesh.geometry.align_vectors(default_forward, arm_0_translation)
+        arm_0_transform[:3, 3] = arm_0_translation
+        arm_transforms[0] = arm_0_transform
+
+        arm_1_translation = spatial_utils.spherical_to_cartesian(
+            *spatial_utils.random_spherical_coordinates(min_dist=-0.15, max_dist=-0.35, randomize_elevation=False)
+        )   
+        arm_1_transform = trimesh.geometry.align_vectors(default_forward, arm_1_translation)
+        arm_1_transform[:3, 3] = arm_1_translation
+        arm_transforms[1] = arm_1_transform
         
         # Arm 0 grasps
         grasp_start_transform0 = np.eye(4)

@@ -1,33 +1,20 @@
 import numpy as np
 
-def look_at_transform(observer_position: np.ndarray, target_pos: np.ndarray = None, up: np.ndarray = None) -> np.ndarray:
-    """Create a transformation matrix that looks at a target point from an observer's position."""
-    if target_pos is None:
-        target_pos = np.array([0, 0, 0])
-    if up is None:
-        up = np.array([0, 0, 1])
-    
-    # Normalize vectors
-    forward = target_pos - observer_position
-    forward = forward / np.linalg.norm(forward)
-    right = np.cross(forward, up)
-    right = right / np.linalg.norm(right)
-    up = np.cross(right, forward)
-    
-    # Create rotation matrix
-    R = np.column_stack([right, up, -forward])
-    
-    # Create transformation matrix
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = observer_position
-
-    return T
-
-def random_spherical_coordinates(min_dist: float = 1.0, max_dist: float = 2.0) -> np.ndarray:
+def random_spherical_coordinates(
+        min_dist: float = 1.0, 
+        max_dist: float = 2.0, 
+        randomize_azimuth: bool = True, 
+        randomize_elevation: bool = True, 
+    ) -> np.ndarray:
     """Generate random spherical coordinates."""
-    theta = np.random.uniform(0, 2 * np.pi)  # azimuth
-    phi = np.random.uniform(np.pi/6, np.pi/2)  # elevation (avoid too low angles)
+    if randomize_azimuth:
+        theta = np.random.uniform(0, 2 * np.pi)  # azimuth
+    else:
+        theta = 0
+    if randomize_elevation:
+        phi = np.random.uniform(np.pi/6, np.pi/2)  # elevation (avoid too low angles)
+    else:
+        phi = np.pi/2
     r = np.random.uniform(min_dist, max_dist)  # distance
     return theta, phi, r
 def spherical_to_cartesian(theta: float, phi: float, r: float) -> np.ndarray:
