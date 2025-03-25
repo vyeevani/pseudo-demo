@@ -269,8 +269,8 @@ class Policy:
         return next_policy_state
     
 if __name__ == "__main__":
-    num_examples = 3
-    num_demonstrations = 1
+    num_examples = 2
+    num_demonstrations = 2
     num_cameras = 4
     num_objects = 4
     arm_ids = [0, 1]
