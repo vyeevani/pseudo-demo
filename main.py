@@ -117,6 +117,8 @@ class Renderer:
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
     arms: Dict[int, Arm]
+    gripper_speed: float = 0.1  # Speed of gripper movement per step
+
     def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480, arm_transforms: Dict[int, np.ndarray] = {0: np.eye(4)}):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
@@ -153,6 +155,7 @@ class Renderer:
         self.camera_intrinsics = camera_intrinsics
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
+
     def __call__(self, state: EnvironmentState):
         for obj_id, obj_state in state.object_states.items():
             self.object_nodes[obj_id].matrix = obj_state.pose
@@ -160,7 +163,17 @@ class Renderer:
         # Control all arms based on their poses in policy state
         for arm_id, arm in self.arms.items():
             if arm_id in state.robot_states:
-                arm.go_to_pose(state.robot_states[arm_id].gripper_pose)
+                robot_state = state.robot_states[arm_id]
+                target_open = 1.0 if robot_state.grasped_object_id is None else 0.0
+                current_open = 1.0 if state.robot_states[arm_id].grasped_object_id is None else 0.0
+                
+                # Gradually move towards target
+                if current_open < target_open:
+                    current_open = min(current_open + self.gripper_speed, target_open)
+                elif current_open > target_open:
+                    current_open = max(current_open - self.gripper_speed, target_open)
+                
+                arm.go_to_pose(robot_state.gripper_pose, open_amount=current_open)
         
         observations = []
         for cam_idx, camera_state in enumerate(state.camera_states):

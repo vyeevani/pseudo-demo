@@ -5,7 +5,7 @@ import trimesh
 from scipy.spatial.transform import Rotation
 from robot_descriptions import widow_mj_description
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_to_geom_nodes = {}
@@ -55,7 +55,9 @@ def widowx_arm(root_transform: np.ndarray):
     mujoco.mj_forward(model, data)
     body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
     root_node = pyrender.Node(children=list(body_nodes.values()))
-    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", root_transform)
+    num_joints = model.njnt
+    gripper_joint_ids = list(range(num_joints - 2, num_joints))
+    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", gripper_joint_ids, root_transform)
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -119,14 +121,15 @@ class Arm:
     initial_poses: Dict[int, np.ndarray]
     eef_name: str
     root_transform: np.ndarray
+    gripper_joint_ids: List[int]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, root_transform: Optional[np.ndarray] = None):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, gripper_joint_ids: List[int], root_transform: Optional[np.ndarray] = None):
         self.model = model
         self.data = data
         self.body_nodes = body_nodes
         self.eef_name = eef_body_name
         self.root_transform = root_transform if root_transform is not None else np.eye(4)
-        
+        self.gripper_joint_ids = gripper_joint_ids
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
         
         self.initial_poses = {}
@@ -138,14 +141,42 @@ class Arm:
         
         self.go_to_pose()
     
-    def go_to_pose(self, pose: Optional[np.ndarray] = None):
+    def go_to_pose(self, pose: Optional[np.ndarray] = None, open_amount: float = 1.0):
+        """
+        Move the gripper to a specified pose and control its opening/closing.
+        
+        Args:
+            pose: The target pose for the gripper. Defaults to identity matrix if None.
+            open_amount: 1.0 for fully open, 0.0 for fully closed.
+        """
+        # Set default pose if none provided
         if pose is None:
             pose = np.eye(4)
+        
+        # Calculate target pose
         root_node = self.model.body_rootid[self.eef_id]
         target_pose = self.initial_poses[root_node] @ gripper_to_root_transform(self.model, self.data, self.eef_id) @ np.linalg.inv(self.root_transform) @ pose
         ik(self.model, self.data, self.eef_id, target_pose)
+        
+        # Update body node matrices
         for body_id, body_node in self.body_nodes.items():
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
             body_transform[:3, 3] = self.data.xpos[body_id]
             body_node.matrix = self.root_transform @ body_transform
+        
+        # Control gripper opening/closing
+        left_closed = 0.015
+        left_open = 0.037
+        right_closed = -0.015
+        right_open = -0.037
+        
+        for joint_id in self.gripper_joint_ids:
+            joint_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_id)
+            if "left" in joint_name.lower():
+                self.data.qpos[joint_id] = left_closed + open_amount * (left_open - left_closed)
+            elif "right" in joint_name.lower():
+                self.data.qpos[joint_id] = right_closed + open_amount * (right_open - right_closed)
+        
+        # Update simulation
+        mujoco.mj_forward(self.model, self.data)
