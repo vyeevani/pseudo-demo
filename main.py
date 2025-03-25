@@ -21,48 +21,46 @@ class GraspTarget:
 
 @dataclass
 class RobotState:
-    gripper_poses: Dict[int, np.ndarray]
-    grasped_object_ids: Dict[int, Optional[int]] = None
-    
-    def __init__(self, arm_ids: List[int] = [0, 1]):
-        self.gripper_poses = {arm_id: np.eye(4) for arm_id in arm_ids}
-        self.grasped_object_ids = {arm_id: None for arm_id in arm_ids}
+    gripper_pose: np.ndarray
+    grasped_object_id: Optional[int] = None
+
+    def __init__(self):
+        self.gripper_pose = np.eye(4)
+        self.grasped_object_id = None
+
+@dataclass
+class ObjectState:
+    pose: np.ndarray
+
+    def __init__(self, bounding_box_radius: float = 0.1):
+        bounding_box_x = np.random.uniform(0, bounding_box_radius)
+        bounding_box_y = np.sqrt(bounding_box_radius**2 - bounding_box_x**2) * np.random.choice([-1, 1])
+        self.pose = spatial_utils.translate_pose(
+            spatial_utils.random_rotation(random_z=True, random_y=False, random_x=False),
+            np.array([
+                bounding_box_x,
+                bounding_box_y,
+                0
+            ])
+        )
+
+@dataclass
+class CameraState:
+    pose: np.ndarray
+
+    def __init__(self):
+        self.pose = spatial_utils.look_at_transform(
+            spatial_utils.spherical_to_cartesian(
+                *spatial_utils.random_spherical_coordinates()
+            )
+        )
 
 @dataclass
 class EnvironmentState:
-    camera_poses: List[np.ndarray]
-    object_poses: Dict[int, np.ndarray]
+    camera_states: List[CameraState]
+    object_states: Dict[int, ObjectState]
+    robot_states: Dict[int, RobotState]
     finished: bool
-    policy_state: RobotState
-
-    def __init__(self, num_objects: int, num_cameras: int, arm_ids: List[int] = [0, 1], bounding_box_radius: float = 0.1):
-        object_poses = {}
-        for i in range(num_objects):
-            bounding_box_x = np.random.uniform(0, bounding_box_radius)
-            bounding_box_y = np.sqrt(bounding_box_radius**2 - bounding_box_x**2) * np.random.choice([-1, 1])
-            object_poses[i] = spatial_utils.translate_pose(
-                spatial_utils.random_rotation(random_z=True, random_y=False, random_x=False),
-                np.array([
-                    bounding_box_x,
-                    bounding_box_y,
-                    0
-                ])
-            )
-        
-        # Camera constants
-        camera_poses = [
-            spatial_utils.look_at_transform(
-                spatial_utils.spherical_to_cartesian(
-                    *spatial_utils.random_spherical_coordinates()
-                )
-            )
-            for _ in range(num_cameras)
-        ]
-        
-        self.camera_poses = camera_poses
-        self.object_poses = object_poses
-        self.finished = False
-        self.policy_state = RobotState(arm_ids=arm_ids)
 
 def default_scene(add_table: bool = False) -> pyrender.Scene:
     scene = pyrender.Scene()
@@ -156,17 +154,18 @@ class Renderer:
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
     def __call__(self, state: EnvironmentState):
-        for obj_id, obj_pose in state.object_poses.items():
-            self.object_nodes[obj_id].matrix = obj_pose
+        for obj_id, obj_state in state.object_states.items():
+            self.object_nodes[obj_id].matrix = obj_state.pose
         
         # Control all arms based on their poses in policy state
         for arm_id, arm in self.arms.items():
-            if arm_id in state.policy_state.gripper_poses:
-                arm.go_to_pose(state.policy_state.gripper_poses[arm_id])
+            if arm_id in state.robot_states:
+                arm.go_to_pose(state.robot_states[arm_id].gripper_pose)
         
         observations = []
-        for cam_idx, camera_node in enumerate(self.camera_nodes):
-            camera_node.matrix = state.camera_poses[cam_idx]
+        for cam_idx, camera_state in enumerate(state.camera_states):
+            camera_node = self.camera_nodes[cam_idx]
+            camera_node.matrix = camera_state.pose
             self.scene.main_camera_node = camera_node
             flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
             color, depth = self.renderer.render(self.scene, flags=flags)
@@ -182,17 +181,16 @@ class Renderer:
 class Environment:
     def __init__(self, grasps: List[GraspTarget]):
         self.grasps = grasps
-    def __call__(self, state: EnvironmentState, action: RobotState) -> EnvironmentState:
+    def __call__(self, state: EnvironmentState, action: Dict[int, RobotState]) -> EnvironmentState:
         new_state = deepcopy(state)
         
         # For each arm, update object position if grasping something
-        for arm_id, grasped_object_id in state.policy_state.grasped_object_ids.items():
-            if grasped_object_id is not None:
-                gripper_delta = action.gripper_poses[arm_id] @ np.linalg.inv(state.policy_state.gripper_poses[arm_id])
-                new_state.object_poses[grasped_object_id] = gripper_delta @ state.object_poses[grasped_object_id]
+        for arm_id, robot_state in action.items():
+            if robot_state.grasped_object_id is not None:
+                gripper_delta = robot_state.gripper_pose @ np.linalg.inv(state.robot_states[arm_id].gripper_pose)
+                new_state.object_states[robot_state.grasped_object_id].pose = gripper_delta @ state.object_states[robot_state.grasped_object_id].pose
         
-        new_state.policy_state.gripper_poses = action.gripper_poses
-        new_state.policy_state.grasped_object_ids = action.grasped_object_ids
+        new_state.robot_states = action
         return new_state
     
 class Policy:
@@ -202,7 +200,7 @@ class Policy:
         arm_object_ids = {}
         
         # Initialize empty lists for all arms in the state
-        for arm_id in init_state.policy_state.gripper_poses.keys():
+        for arm_id in init_state.robot_states.keys():
             arm_waypoints[arm_id] = []
             arm_object_ids[arm_id] = []
         
@@ -210,7 +208,7 @@ class Policy:
             arm_id = grasp.arm_id
             arm_waypoints[arm_id].append(grasp.start_pose.copy())
             arm_object_ids[arm_id].append(None)
-            arm_waypoints[arm_id].append(init_state.object_poses[grasp.object_id] @ grasp.grasp_pose.copy())
+            arm_waypoints[arm_id].append(init_state.object_states[grasp.object_id].pose @ grasp.grasp_pose.copy())
             arm_object_ids[arm_id].append(grasp.object_id)
             arm_waypoints[arm_id].append(grasp.end_pose.copy())
             arm_object_ids[arm_id].append(None)
@@ -232,21 +230,21 @@ class Policy:
                 self.arm_trajectories[arm_id] = []
                 self.arm_object_id_trajectories[arm_id] = []
                 
-    def __call__(self, state: EnvironmentState) -> RobotState:
+    def __call__(self, state: EnvironmentState) -> Dict[int, RobotState]:
         # Get all arm IDs from current state
-        arm_ids = list(state.policy_state.gripper_poses.keys())
-        next_policy_state = RobotState(arm_ids=arm_ids)
+        next_policy_state = {}
         
         # Copy current state
-        for arm_id in arm_ids:
-            next_policy_state.gripper_poses[arm_id] = state.policy_state.gripper_poses[arm_id].copy()
-            next_policy_state.grasped_object_ids[arm_id] = state.policy_state.grasped_object_ids[arm_id]
+        for arm_id, robot_state in state.robot_states.items():
+            next_policy_state[arm_id] = RobotState()
+            next_policy_state[arm_id].gripper_pose = robot_state.gripper_pose.copy()
+            next_policy_state[arm_id].grasped_object_id = robot_state.grasped_object_id
             
         # Update each arm if it has remaining waypoints
         for arm_id in self.arm_trajectories.keys():
             if self.arm_trajectories[arm_id]:  # If this arm has waypoints left
-                next_policy_state.gripper_poses[arm_id] = self.arm_trajectories[arm_id].pop(0).copy()
-                next_policy_state.grasped_object_ids[arm_id] = self.arm_object_id_trajectories[arm_id].pop(0)
+                next_policy_state[arm_id].gripper_pose = self.arm_trajectories[arm_id].pop(0).copy()
+                next_policy_state[arm_id].grasped_object_id = self.arm_object_id_trajectories[arm_id].pop(0)
 
         return next_policy_state
     
@@ -297,11 +295,14 @@ if __name__ == "__main__":
         GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
         GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
     ]
-    
-    env_state = EnvironmentState(num_objects=num_objects, num_cameras=num_cameras, arm_ids=arm_ids)
+    object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
+    camera_states = [CameraState() for _ in range(num_cameras)]
+    robot_states = {arm_id: RobotState() for arm_id in arm_ids}
+    env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
     environment = Environment(grasps)
     policy = Policy(grasps, env_state)
     renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
+
     rr.init("Rigid Manipulation", spawn=True)
     for i in tqdm(range(250)):
         action = policy(env_state)
