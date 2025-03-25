@@ -266,60 +266,41 @@ if __name__ == "__main__":
 
     arm_transforms = {}
     arm_transforms[0] = np.array([
-        [-1, 0, 0, 0.25],
+        [-1, 0, 0, 0.5],
         [0, -1, 0, 0],
         [0, 0, 1, 0],
         [0, 0, 0, 1]
     ])
-    grasp_start_transform = np.eye(4)
-    grasp_start_transform[2, 3] = 0.25
-    grasp_start_transform[0, 3] = 0.25
-    grasp_start = arm_transforms[0] @ grasp_start_transform
-    grasp_end0 = grasp_start.copy()
-    grasp_end1 = grasp_start.copy()
-    grasp_end1[0, 3] += 0.25
+    
+    arm_transforms[1] = np.array([
+        [1, 0, 0, -0.5],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
+    
+    # Arm 0 grasps
+    grasp_start_transform0 = np.eye(4)
+    grasp_start_transform0[2, 3] = 0.25
+    grasp_start_transform0[0, 3] = 0.25
+    grasp_start0 = arm_transforms[0] @ grasp_start_transform0
+    grasp_end0 = grasp_start0.copy()
+
+    grasp_end01 = grasp_start0.copy()
+    grasp_end01[0, 3] += 0.25
+    
+    # Arm 1 grasps
+    grasp_start_transform1 = np.eye(4)
+    grasp_start_transform1[2, 3] = 0.25
+    grasp_start_transform1[0, 3] = 0.25
+    grasp_start1 = arm_transforms[1] @ grasp_start_transform1
+    grasp_end1 = grasp_start1.copy()
+    
+    # Create grasps for both arms
     grasps = [
-        GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
-        GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end1.copy()),
+        GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
+        GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
     ]
-
-    # arm_transforms = {}
-    # arm_transforms[0] = np.array([
-    #     [-1, 0, 0, 0.5],
-    #     [0, -1, 0, 0],
-    #     [0, 0, 1, 0],
-    #     [0, 0, 0, 1]
-    # ])
-    
-    # arm_transforms[1] = np.array([
-    #     [1, 0, 0, -0.5],
-    #     [0, 1, 0, 0],
-    #     [0, 0, 1, 0],
-    #     [0, 0, 0, 1]
-    # ])
-    
-    # # Arm 0 grasps
-    # grasp_start_transform0 = np.eye(4)
-    # grasp_start_transform0[2, 3] = 0.25
-    # grasp_start_transform0[0, 3] = 0.25
-    # grasp_start0 = arm_transforms[0] @ grasp_start_transform0
-    # grasp_end0 = grasp_start0.copy()
-
-    # grasp_end01 = grasp_start0.copy()
-    # grasp_end01[0, 3] += 0.25
-    
-    # # Arm 1 grasps
-    # grasp_start_transform1 = np.eye(4)
-    # grasp_start_transform1[2, 3] = 0.25
-    # grasp_start_transform1[0, 3] = 0.25
-    # grasp_start1 = arm_transforms[1] @ grasp_start_transform1
-    # grasp_end1 = grasp_start1.copy()
-    
-    # # Create grasps for both arms
-    # grasps = [
-    #     GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
-    #     GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
-    # ]
 
     object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
     camera_states = [CameraState() for _ in range(num_cameras)]
