@@ -14,7 +14,7 @@ import trimesh_utils as trimesh_utils
 @dataclass
 class GraspTarget:
     object_id: int
-    arm_id: int  # 0 for first arm, 1 for second arm
+    arm_id: int
     start_pose: np.ndarray
     grasp_pose: np.ndarray
     end_pose: np.ndarray
@@ -259,75 +259,78 @@ if __name__ == "__main__":
     object_thickness = 0.08
     object_meshes = [trimesh.creation.box(extents=[object_thickness, object_thickness, object_thickness]) for _ in range(num_objects)]
     object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
-    for obj in object_meshes:
-        color = np.random.randint(0, 256, size=4)
-        color[3] = 255
-        obj.visual.vertex_colors = color
 
-    arm_transforms = {}
-    arm_transforms[0] = np.array([
-        [-1, 0, 0, 0.5],
-        [0, -1, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 1]
-    ])
-    
-    arm_transforms[1] = np.array([
-        [1, 0, 0, -0.5],
-        [0, 1, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 1]
-    ])
-    
-    # Arm 0 grasps
-    grasp_start_transform0 = np.eye(4)
-    grasp_start_transform0[2, 3] = 0.25
-    grasp_start_transform0[0, 3] = 0.25
-    grasp_start0 = arm_transforms[0] @ grasp_start_transform0
-    grasp_end0 = grasp_start0.copy()
+    num_demonstrations = 3  # Define the number of demonstrations
+    demonstrations = []
+    rr.init(f"Rigid Manipulation Demo", spawn=True)
 
-    grasp_end01 = grasp_start0.copy()
-    grasp_end01[0, 3] += 0.25
-    
-    # Arm 1 grasps
-    grasp_start_transform1 = np.eye(4)
-    grasp_start_transform1[2, 3] = 0.25
-    grasp_start_transform1[0, 3] = 0.25
-    grasp_start1 = arm_transforms[1] @ grasp_start_transform1
-    grasp_end1 = grasp_start1.copy()
-    
-    # Create grasps for both arms
-    grasps = [
-        GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
-        GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
-    ]
-
-    object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
+    # Initialize camera states once to retain positions between demos
     camera_states = [CameraState() for _ in range(num_cameras)]
-    robot_states = {arm_id: RobotState() for arm_id in arm_ids}
-    env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
-    environment = Environment(grasps)
-    policy = Policy(grasps, env_state)
-    renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
 
-    rr.init("Rigid Manipulation", spawn=True)
-    for i in tqdm(range(250)):
-        action = policy(env_state)
-        env_state = environment(env_state, action)
-        observations = renderer(env_state)
-        for camera_id, camera_data in enumerate(observations):
-            rr.log(
-                f"world/{camera_id}",
-                rr.Pinhole(
-                    image_from_camera=camera_data['camera_intrinsics'],
-                    width=camera_data['color'].shape[1],
-                    height=camera_data['color'].shape[0],
-                    camera_xyz=rr.ViewCoordinates.RUB,
-                ),
-            )
-            rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
-            rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
-            rr.log(f"world/{camera_id}", rr.Transform3D(
-                mat3x3=camera_data['camera_pose'][:3, :3],
-                translation=camera_data['camera_pose'][:3, 3],
-            ))
+    for demo in range(num_demonstrations):
+        arm_transforms = {}
+        arm_transforms[0] = np.array([
+            [-1, 0, 0, 0.35],
+            [0, -1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        arm_transforms[1] = np.array([
+            [1, 0, 0, -0.35],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # Arm 0 grasps
+        grasp_start_transform0 = np.eye(4)
+        grasp_start_transform0[2, 3] = 0.25
+        grasp_start_transform0[0, 3] = 0.25
+        grasp_start0 = arm_transforms[0] @ grasp_start_transform0
+        grasp_end0 = grasp_start0.copy()
+        
+        # Arm 1 grasps
+        grasp_start_transform1 = np.eye(4)
+        grasp_start_transform1[2, 3] = 0.25
+        grasp_start_transform1[0, 3] = 0.25
+        grasp_start1 = arm_transforms[1] @ grasp_start_transform1
+        grasp_end1 = grasp_start1.copy()
+        
+        # Create grasps for both arms
+        grasps = [
+            GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
+            GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
+        ]
+
+        max_grasps_per_arm = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in arm_ids)
+
+        object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
+        robot_states = {arm_id: RobotState() for arm_id in arm_ids}
+        env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
+        environment = Environment(grasps)
+        num_steps = 25
+        policy = Policy(grasps, env_state, num_steps=num_steps)
+        renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
+
+        for i in tqdm(range(num_steps * max_grasps_per_arm * 3)):
+            action = policy(env_state)
+            env_state = environment(env_state, action)
+            observations = renderer(env_state)
+            for camera_id, camera_data in enumerate(observations):
+                rr.log(
+                    f"world/{camera_id}",
+                    rr.Pinhole(
+                        image_from_camera=camera_data['camera_intrinsics'],
+                        width=camera_data['color'].shape[1],
+                        height=camera_data['color'].shape[0],
+                        camera_xyz=rr.ViewCoordinates.RUB,
+                    ),
+                )
+                rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
+                rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
+                rr.log(f"world/{camera_id}", rr.Transform3D(
+                    mat3x3=camera_data['camera_pose'][:3, :3],
+                    translation=camera_data['camera_pose'][:3, 3],
+                ))
+        demonstrations.append(env_state)
