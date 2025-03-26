@@ -269,14 +269,14 @@ class Policy:
         return next_policy_state
     
 if __name__ == "__main__":
-    num_examples = 2
-    num_demonstrations = 2
+    num_examples = 1
+    num_demonstrations = 1
     num_cameras = 4
     num_objects = 4
     arm_ids = [0, 1]
-    dataset = []
 
-    rr.init(f"Rigid Manipulation Demo", spawn=True)
+    rr.init("Rigid Manipulation Demo")
+    rr.save("dataset.rrd")
 
     for example in range(num_examples):
         object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
@@ -284,7 +284,6 @@ if __name__ == "__main__":
 
         # Initialize camera states once to retain positions between demos
         camera_states = [CameraState() for _ in range(num_cameras)]
-        demonstrations = []
 
         for demo in range(num_demonstrations):
             arm_transforms = {}
@@ -333,8 +332,6 @@ if __name__ == "__main__":
                 GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
             ]
 
-            max_grasps_per_arm = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in arm_ids)
-
             object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
             robot_states = {arm_id: RobotState() for arm_id in arm_ids}
             env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
@@ -342,8 +339,11 @@ if __name__ == "__main__":
             num_steps = 25
             policy = Policy(grasps, env_state, num_steps=num_steps)
             renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
+            steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in arm_ids) * 3 * num_steps
+            steps_per_episode = 100
 
-            for i in tqdm(range(num_steps * max_grasps_per_arm * 3)):
+            for i in tqdm(range(steps_per_episode)):
+                rr.set_time_sequence("frame", i)
                 action = policy(env_state)
                 env_state = environment(env_state, action)
                 observations = renderer(env_state)
@@ -363,9 +363,3 @@ if __name__ == "__main__":
                         mat3x3=camera_data['camera_pose'][:3, :3],
                         translation=camera_data['camera_pose'][:3, 3],
                     ))
-            demonstrations.append(env_state)
-
-
-
-
-        dataset.append(demonstrations)

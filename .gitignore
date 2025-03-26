@@ -101,3 +101,5 @@ logs/
 # Rendered outputs and temporary files
 outputs/
 temp/ 
+
+*.rrd
