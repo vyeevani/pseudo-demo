@@ -347,6 +347,15 @@ if __name__ == "__main__":
                 action = policy(env_state)
                 env_state = environment(env_state, action)
                 observations = renderer(env_state)
+                for arm_id, robot_state in env_state.robot_states.items():
+                    rr.log(
+                        f"world/arm_{arm_id}/pose",
+                        rr.Transform3D(
+                            mat3x3=robot_state.gripper_pose[:3, :3],
+                            translation=robot_state.gripper_pose[:3, 3],
+                        ),
+                    )
+                    rr.log(f"world/arm_{arm_id}/object_id", rr.Scalar(robot_state.grasped_object_id))
                 for camera_id, camera_data in enumerate(observations):
                     rr.log(
                         f"world/{camera_id}",
@@ -357,9 +366,9 @@ if __name__ == "__main__":
                             camera_xyz=rr.ViewCoordinates.RUB,
                         ),
                     )
-                    rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
-                    rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
                     rr.log(f"world/{camera_id}", rr.Transform3D(
                         mat3x3=camera_data['camera_pose'][:3, :3],
                         translation=camera_data['camera_pose'][:3, 3],
                     ))
+                    rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
+                    rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
