@@ -1,11 +1,10 @@
 import rerun as rr
 import polars as pl
 import numpy as np
-import matplotlib.pyplot as plt
 from PIL import Image
 
 def make_image(df, entity, row):
-    image_bytes = bytes(df[row][f"{entity}:ImageBuffer"][0][0].to_list())
+    image_bytes = bytes(df[row][f"{entity}:ImageBuffer"][0][0])
     image_format = rr.datatypes.ImageFormat(**(df[row][f"{entity}:ImageFormat"][0][0]))
     if image_format.color_model:
         mode = str(image_format.color_model)
@@ -27,31 +26,29 @@ def make_pinhole(df, entity, row):
     transform = make_transform(df, entity, row)
     return intrinsics, transform
 
-recording = rr.dataframe.load_recording("dataset.rrd")
-schema = recording.schema()
-view = recording \
-    .view(index="frame", contents="/**")
-arrow_table = view.select().read_all()
-df = pl.from_arrow(arrow_table)
-print(df.columns)
+def make_scalar(df, entity, row):
+    return df[row][f"{entity}:Scalar"][0]
 
+def get_meta_episode(df: pl.DataFrame, meta_episode_number: int):
+    return df.filter(pl.col("meta_episode_number") == meta_episode_number)
 
-print(make_transform(df, "/world/arm_0/pose", 0))
-print(df[0]["/world/arm_0/object_id:Scalar"][0])
-print(make_pinhole(df, "/world/3", 0))
+def get_episode(df: pl.DataFrame, episode_number: int):
+    return df.filter(pl.col("episode_number") == episode_number)
 
-# image = make_image(df, "/world/3/color", 0)
-# depth = make_image(df, "/world/3/depth", 0)
+def make_timestep(df: pl.DataFrame, frame_id: int):
+    return df.filter(pl.col("frame_id") == frame_id)
 
-# plt.figure(figsize=(10, 5))
-# plt.subplot(1, 2, 1)
-# plt.title("Color Image")
-# plt.imshow(np.array(image), cmap='gray' if image.mode == 'L' else None)
-# plt.axis('off')
+def make_rr_dataset(path):
+    recording = rr.dataframe.load_recording(path)
+    view = recording.view(index="frame_id", contents="/**")
+    arrow_table = view.select().read_all()
+    df = pl.from_arrow(arrow_table)
+    return df
 
-# plt.subplot(1, 2, 2)
-# plt.title("Depth Image")
-# plt.imshow(np.array(depth), cmap='gray')
-# plt.axis('off')
-
-# plt.show()
+df = make_rr_dataset("dataset.rrd")
+print(df)
+print(get_meta_episode(df, 0))
+print(get_episode(get_meta_episode(df, 0), 0))
+episode = get_episode(get_meta_episode(df, 0), 0)
+print(make_image(episode, "/world/0/color", 0))
+print(make_image(episode, "/world/0/depth", 0))
