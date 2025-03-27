@@ -269,14 +269,14 @@ class Policy:
         return next_policy_state
     
 if __name__ == "__main__":
-    num_examples = 2
-    num_demonstrations = 2
+    num_examples = 1
+    num_demonstrations = 1
     num_cameras = 4
-    num_objects = 4
-    arm_ids = [0, 1]
+    num_objects = 2
+    num_arms = 2
 
-    rr.init("Rigid Manipulation Demo")
-    rr.save("dataset.rrd")
+    rr.init("Rigid Manipulation Demo", spawn=True)
+    # rr.save("dataset.rrd")
     unique_frame_id = 0
 
     for example in range(num_examples):
@@ -294,54 +294,46 @@ if __name__ == "__main__":
             default_up = np.array([0, 0, 1])
             desired_up = np.array([0, 0, 1])
 
-            arm_0_translation = spatial_utils.spherical_to_cartesian(
-                *spatial_utils.random_spherical_coordinates(min_dist=-0.35, max_dist=-0.45, randomize_elevation=False)
-            )
-            desired_forward_0 = -arm_0_translation / np.linalg.norm(arm_0_translation)
-            arm_0_rotation = spatial_utils.look_at_rotation(default_forward, desired_forward_0, default_up, desired_up)
-            arm_0_transform = np.eye(4)
-            arm_0_transform[:3, :3] = arm_0_rotation
-            arm_0_transform[:3, 3] = arm_0_translation
-            arm_transforms[0] = arm_0_transform
+            arm_transforms = {}
+            grasps = []
 
-            arm_1_translation = spatial_utils.spherical_to_cartesian(
-                *spatial_utils.random_spherical_coordinates(min_dist=-0.35, max_dist=-0.45, randomize_elevation=False)
-            )
-            desired_forward_1 = -arm_1_translation / np.linalg.norm(arm_1_translation)
-            arm_1_rotation = spatial_utils.look_at_rotation(default_forward, desired_forward_1, default_up, desired_up)
-            arm_1_transform = np.eye(4)
-            arm_1_transform[:3, :3] = arm_1_rotation
-            arm_1_transform[:3, 3] = arm_1_translation
-            arm_transforms[1] = arm_1_transform
-            
-            # Arm 0 grasps
-            grasp_start_transform0 = np.eye(4)
-            grasp_start_transform0[2, 3] = 0.25
-            grasp_start_transform0[0, 3] = 0.25
-            grasp_start0 = arm_transforms[0] @ grasp_start_transform0
-            grasp_end0 = grasp_start0.copy()
-            
-            # Arm 1 grasps
-            grasp_start_transform1 = np.eye(4)
-            grasp_start_transform1[2, 3] = 0.25
-            grasp_start_transform1[0, 3] = 0.25
-            grasp_start1 = arm_transforms[1] @ grasp_start_transform1
-            grasp_end1 = grasp_start1.copy()
-            
-            # Create grasps for both arms
-            grasps = [
-                GraspTarget(object_id=0, arm_id=0, start_pose=grasp_start0.copy(), grasp_pose=object_point_transforms[0], end_pose=grasp_end0.copy()),
-                GraspTarget(object_id=1, arm_id=1, start_pose=grasp_start1.copy(), grasp_pose=object_point_transforms[1], end_pose=grasp_end1.copy()),
-            ]
+            for arm_id in range(num_arms):
+                arm_translation = spatial_utils.spherical_to_cartesian(
+                    *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
+                )
+                desired_forward = -arm_translation / np.linalg.norm(arm_translation)
+                arm_rotation = spatial_utils.look_at_rotation(default_forward, desired_forward, default_up, desired_up)
+                arm_transform = np.eye(4)
+                arm_transform[:3, :3] = arm_rotation
+                arm_transform[:3, 3] = arm_translation
+                arm_transforms[arm_id] = arm_transform
+
+                # Arm grasps
+                grasp_start_transform = np.eye(4)
+                grasp_start_transform[2, 3] = 0.25
+                grasp_start_transform[0, 3] = 0.25
+                grasp_start = arm_transforms[arm_id] @ grasp_start_transform
+                grasp_end = grasp_start.copy()
+
+                # Create grasp for the arm
+                grasps.append(
+                    GraspTarget(
+                        object_id=arm_id, 
+                        arm_id=arm_id, 
+                        start_pose=grasp_start.copy(), 
+                        grasp_pose=object_point_transforms[arm_id], 
+                        end_pose=grasp_end.copy()
+                    )
+                )
 
             object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
-            robot_states = {arm_id: RobotState() for arm_id in arm_ids}
+            robot_states = {arm_id: RobotState() for arm_id in range(num_arms)}
             env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             environment = Environment(grasps)
             num_steps = 25
             policy = Policy(grasps, env_state, num_steps=num_steps)
             renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
-            steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in arm_ids) * 3 * num_steps
+            steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
             steps_per_episode = 100
 
             for i in tqdm(range(steps_per_episode)):
