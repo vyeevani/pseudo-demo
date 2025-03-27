@@ -22,10 +22,12 @@ class GraspTarget:
 @dataclass
 class RobotState:
     gripper_pose: np.ndarray
+    arm_pose: np.ndarray
     grasped_object_id: Optional[int] = None
 
-    def __init__(self):
+    def __init__(self, arm_pose: np.ndarray):
         self.gripper_pose = np.eye(4)
+        self.arm_pose = arm_pose
         self.grasped_object_id = None
 
 @dataclass
@@ -120,10 +122,11 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
+    arm_nodes: Dict[int, pyrender.Node]
     arms: Dict[int, Arm]
     gripper_speed: float = 0.1  # Speed of gripper movement per step
 
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_cameras: int, image_width: int = 480, image_height: int = 480, arm_transforms: Dict[int, np.ndarray] = {0: np.eye(4)}):
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_arms: int, num_cameras: int, image_width: int = 480, image_height: int = 480):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
         fx = image_width / (2 * np.tan(yfov / 2))
@@ -147,10 +150,12 @@ class Renderer:
 
         # Add arms
         self.arms = {}
-        for arm_id, arm_transform in arm_transforms.items():
-            arm_node, arm = widowx_arm(arm_transform)
+        arm_nodes = {}
+        for arm_id in range(num_arms):
+            arm_node, arm = widowx_arm()
             scene.add_node(arm_node)
             self.arms[arm_id] = arm
+            arm_nodes[arm_id] = arm_node
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
 
@@ -159,7 +164,7 @@ class Renderer:
         self.camera_intrinsics = camera_intrinsics
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
-
+        self.arm_nodes = arm_nodes
     def __call__(self, state: EnvironmentState):
         for obj_id, obj_state in state.object_states.items():
             self.object_nodes[obj_id].matrix = obj_state.pose
@@ -176,8 +181,9 @@ class Renderer:
                     current_open = min(current_open + self.gripper_speed, target_open)
                 elif current_open > target_open:
                     current_open = max(current_open - self.gripper_speed, target_open)
-                
-                arm.go_to_pose(robot_state.gripper_pose, open_amount=current_open)
+                # convert to arm frame
+                arm.go_to_pose(np.linalg.inv(state.robot_states[arm_id].arm_pose) @ robot_state.gripper_pose, open_amount=current_open)
+                self.arm_nodes[arm_id].matrix = state.robot_states[arm_id].arm_pose
         
         observations = []
         for cam_idx, camera_state in enumerate(state.camera_states):
@@ -256,7 +262,7 @@ class Policy:
         
         # Copy current state
         for arm_id, robot_state in state.robot_states.items():
-            next_policy_state[arm_id] = RobotState()
+            next_policy_state[arm_id] = RobotState(robot_state.arm_pose.copy())
             next_policy_state[arm_id].gripper_pose = robot_state.gripper_pose.copy()
             next_policy_state[arm_id].grasped_object_id = robot_state.grasped_object_id
             
@@ -294,7 +300,7 @@ if __name__ == "__main__":
             default_up = np.array([0, 0, 1])
             desired_up = np.array([0, 0, 1])
 
-            arm_transforms = {}
+            robot_states = {}
             grasps = []
 
             for arm_id in range(num_arms):
@@ -306,13 +312,12 @@ if __name__ == "__main__":
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
                 arm_transform[:3, 3] = arm_translation
-                arm_transforms[arm_id] = arm_transform
-
+                robot_states[arm_id] = RobotState(arm_transform)
                 # Arm grasps
                 grasp_start_transform = np.eye(4)
                 grasp_start_transform[2, 3] = 0.25
                 grasp_start_transform[0, 3] = 0.25
-                grasp_start = arm_transforms[arm_id] @ grasp_start_transform
+                grasp_start = arm_transform @ grasp_start_transform
                 grasp_end = grasp_start.copy()
 
                 # Create grasp for the arm
@@ -327,12 +332,11 @@ if __name__ == "__main__":
                 )
 
             object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
-            robot_states = {arm_id: RobotState() for arm_id in range(num_arms)}
             env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             environment = Environment(grasps)
             num_steps = 25
             policy = Policy(grasps, env_state, num_steps=num_steps)
-            renderer = Renderer(default_scene(), object_meshes, num_cameras=num_cameras, arm_transforms=arm_transforms)
+            renderer = Renderer(default_scene(), object_meshes, num_arms, num_cameras)
             steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
             steps_per_episode = 100
 

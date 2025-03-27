@@ -49,7 +49,7 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_nodes = {body_id: pyrender.Node(children=body_to_geom_nodes.get(body_id, [])) for body_id in range(model.nbody)}
     return body_nodes
 
-def widowx_arm(root_transform: np.ndarray):
+def widowx_arm():
     model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
@@ -57,7 +57,7 @@ def widowx_arm(root_transform: np.ndarray):
     root_node = pyrender.Node(children=list(body_nodes.values()))
     num_joints = model.njnt
     gripper_joint_ids = list(range(num_joints - 2, num_joints))
-    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", gripper_joint_ids, root_transform)
+    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", gripper_joint_ids)
 
 def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
     max_iterations = 10000
@@ -118,29 +118,17 @@ class Arm:
     model: mujoco.MjModel
     data: mujoco.MjData
     body_nodes: Dict[int, pyrender.Node]
-    initial_poses: Dict[int, np.ndarray]
     eef_name: str
-    root_transform: np.ndarray
     gripper_joint_ids: List[int]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, gripper_joint_ids: List[int], root_transform: Optional[np.ndarray] = None):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, gripper_joint_ids: List[int]):
         self.model = model
         self.data = data
         self.body_nodes = body_nodes
         self.eef_name = eef_body_name
-        self.root_transform = root_transform if root_transform is not None else np.eye(4)
         self.gripper_joint_ids = gripper_joint_ids
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
-        
-        self.initial_poses = {}
-        for body_id in self.body_nodes.keys():
-            initial_pose = np.eye(4)
-            initial_pose[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
-            initial_pose[:3, 3] = self.data.xpos[body_id]
-            self.initial_poses[body_id] = initial_pose
-        
         self.go_to_pose()
-    
     def go_to_pose(self, pose: Optional[np.ndarray] = None, open_amount: float = 1.0):
         """
         Move the gripper to a specified pose and control its opening/closing.
@@ -153,9 +141,7 @@ class Arm:
         if pose is None:
             pose = np.eye(4)
         
-        # Calculate target pose
-        root_node = self.model.body_rootid[self.eef_id]
-        target_pose = self.initial_poses[root_node] @ gripper_to_root_transform(self.model, self.data, self.eef_id) @ np.linalg.inv(self.root_transform) @ pose
+        target_pose = gripper_to_root_transform(self.model, self.data, self.eef_id) @ pose
         ik(self.model, self.data, self.eef_id, target_pose)
         
         # Update body node matrices
@@ -163,9 +149,10 @@ class Arm:
             body_transform = np.eye(4)
             body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
             body_transform[:3, 3] = self.data.xpos[body_id]
-            body_node.matrix = self.root_transform @ body_transform
+            body_node.matrix = body_transform
         
         # Control gripper opening/closing
+        # TODO: Make this inferred from the model
         left_closed = 0.015
         left_open = 0.037
         right_closed = -0.015
