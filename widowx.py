@@ -49,110 +49,74 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_nodes = {body_id: pyrender.Node(children=body_to_geom_nodes.get(body_id, [])) for body_id in range(model.nbody)}
     return body_nodes
 
-def widowx_arm():
-    model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
-    root_node = pyrender.Node(children=list(body_nodes.values()))
-    num_joints = model.njnt
-    gripper_joint_ids = list(range(num_joints - 2, num_joints))
-    return root_node, Arm(model, data, body_nodes, "wx250s/gripper_link", gripper_joint_ids)
-
-def ik(model: mujoco.MjModel, data: mujoco.MjData, target_body_id: int, target_pose: np.ndarray):
-    max_iterations = 10000
-    tolerance = 1e-4
-    learning_rate = 0.1
-
-    for _ in range(max_iterations):
-        mujoco.mj_forward(model, data)  # Compute forward kinematics
-        
-        # Get current end-effector pose as a homogeneous matrix
-        current_translation = data.xpos[target_body_id]
-        current_rotation = Rotation.from_quat(data.xquat[target_body_id], scalar_first=True).as_matrix()
-        current_pose = np.eye(4)
-        current_pose[:3, :3] = current_rotation
-        current_pose[:3, 3] = current_translation
-        
-        # Compute translational error
-        translation_error = target_pose[:3, 3] - current_translation
-        
-        # Compute rotational error via the rotation difference
-        R_err = target_pose[:3, :3] @ current_rotation.T
-        rotation_error = Rotation.from_matrix(R_err).as_rotvec()  # Axis-angle representation
-        
-        # Combine errors into a 6-dimensional error vector
-        error = np.concatenate([translation_error, rotation_error])
-        
-        # Check if we are close enough
-        if np.linalg.norm(error) < tolerance:
-            break
-
-        # Compute Jacobian for translation and rotation
-        jacp = np.zeros((3, model.nv))
-        jacr = np.zeros((3, model.nv))
-        mujoco.mj_jacBody(model, data, jacp, jacr, target_body_id)
-        jac = np.concatenate([jacp, jacr], axis=0)
-
-        # Compute change in joint angles using the Jacobian transpose method
-        dq = learning_rate * jac.T @ error
-
-        # Apply joint updates
-        data.qpos[:model.nq] += dq
-        mujoco.mj_forward(model, data)  # Update forward kinematics
-
-def gripper_to_root_transform(model: mujoco.MjModel, data: mujoco.MjData, eef_id: int):
-    child_ids = [child_id for child_id in range(model.nbody) if model.body_parentid[child_id] == eef_id]
-    child_vectors = []
-    for child_id in child_ids:
-        child_vector = data.xpos[child_id] - data.xpos[eef_id]
-        child_vectors.append(child_vector)
-    mean_vector = np.mean(child_vectors, axis=0)
-    transform = np.eye(4)
-    transform[:3, 3] = mean_vector
-    transform = np.linalg.inv(transform)
-    return transform
-
 @dataclass
-class Arm:
+class ArmController:
+    """
+    Controller for a WidowX arm.
+    Handles both inverse kinematics and gripper control.
+    """
     model: mujoco.MjModel
     data: mujoco.MjData
-    body_nodes: Dict[int, pyrender.Node]
-    eef_name: str
+    eef_id: int
     gripper_joint_ids: List[int]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, body_nodes: Dict[int, pyrender.Node], eef_body_name: str, gripper_joint_ids: List[int]):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: List[str]):
         self.model = model
         self.data = data
-        self.body_nodes = body_nodes
-        self.eef_name = eef_body_name
-        self.gripper_joint_ids = gripper_joint_ids
-        self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.eef_name)
-        self.go_to_pose()
-    def go_to_pose(self, pose: Optional[np.ndarray] = None, open_amount: float = 1.0):
-        """
-        Move the gripper to a specified pose and control its opening/closing.
+        self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
+        self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
+    def __call__(self, target_pose: np.ndarray, open_amount: float, hint: Optional[np.ndarray] = None):
+        root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
+        root_to_gripper_transform = np.eye(4)
+        root_to_gripper_transform[:3, 3] = root_to_gripper_translation
+        gripper_to_root_transform = np.linalg.inv(root_to_gripper_transform)
+        target_pose = gripper_to_root_transform @ target_pose
+        if hint is None:
+            hint = self.data.qpos
+        self.data.qpos[:self.model.nq] = hint
+        mujoco.mj_forward(self.model, self.data)
+
+        max_iterations = 10000
+        tolerance = 1e-4
+        learning_rate = 0.1
+
+        for _ in range(max_iterations):
+            mujoco.mj_forward(self.model, self.data)  # Compute forward kinematics
+            
+            # Get current end-effector pose as a homogeneous matrix
+            current_translation = self.data.xpos[self.eef_id]
+            current_rotation = Rotation.from_quat(self.data.xquat[self.eef_id], scalar_first=True).as_matrix()
+            current_pose = np.eye(4)
+            current_pose[:3, :3] = current_rotation
+            current_pose[:3, 3] = current_translation
+            
+            # Compute translational error
+            translation_error = target_pose[:3, 3] - current_translation
+            
+            # Compute rotational error via the rotation difference
+            R_err = target_pose[:3, :3] @ current_rotation.T
+            rotation_error = Rotation.from_matrix(R_err).as_rotvec()  # Axis-angle representation
+            
+            # Combine errors into a 6-dimensional error vector
+            error = np.concatenate([translation_error, rotation_error])
+            
+            # Check if we are close enough
+            if np.linalg.norm(error) < tolerance:
+                break
+
+            # Compute Jacobian for translation and rotation
+            jacp = np.zeros((3, self.model.nv))
+            jacr = np.zeros((3, self.model.nv))
+            mujoco.mj_jacBody(self.model, self.data, jacp, jacr, self.eef_id)
+            jac = np.concatenate([jacp, jacr], axis=0)
+
+            # Compute change in joint angles using the Jacobian transpose method
+            dq = learning_rate * jac.T @ error
+
+            # Apply joint updates
+            self.data.qpos[:self.model.nq] += dq
+            mujoco.mj_forward(self.model, self.data)  # Update forward kinematics
         
-        Args:
-            pose: The target pose for the gripper. Defaults to identity matrix if None.
-            open_amount: 1.0 for fully open, 0.0 for fully closed.
-        """
-        # Set default pose if none provided
-        if pose is None:
-            pose = np.eye(4)
-        
-        target_pose = gripper_to_root_transform(self.model, self.data, self.eef_id) @ pose
-        ik(self.model, self.data, self.eef_id, target_pose)
-        
-        # Update body node matrices
-        for body_id, body_node in self.body_nodes.items():
-            body_transform = np.eye(4)
-            body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
-            body_transform[:3, 3] = self.data.xpos[body_id]
-            body_node.matrix = body_transform
-        
-        # Control gripper opening/closing
-        # TODO: Make this inferred from the model
         left_closed = 0.015
         left_open = 0.037
         right_closed = -0.015
@@ -164,6 +128,47 @@ class Arm:
                 self.data.qpos[joint_id] = left_closed + open_amount * (left_open - left_closed)
             elif "right" in joint_name.lower():
                 self.data.qpos[joint_id] = right_closed + open_amount * (right_open - right_closed)
-        
-        # Update simulation
         mujoco.mj_forward(self.model, self.data)
+        
+        arm_pose = np.eye(4)
+        arm_pose[:3, :3] = Rotation.from_quat(self.data.xquat[self.eef_id], scalar_first=True).as_matrix()
+        arm_pose[:3, 3] = self.data.xpos[self.eef_id]
+
+        return self.data.qpos, arm_pose
+
+def widowx_controller():
+    model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    return ArmController(model, data, "wx250s/gripper_link", ["right_finger", "left_finger"])
+
+@dataclass
+class ArmRenderer:
+    """
+    Renders a WidowX arm.
+    """
+    model: mujoco.MjModel
+    data: mujoco.MjData
+    body_nodes: Dict[int, pyrender.Node]
+    eef_id: int
+
+    def __init__(self, scene: pyrender.Scene, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str):
+        self.model = model
+        self.data = data
+        self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
+        self.body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
+        [scene.add_node(body_node) for body_node in self.body_nodes.values()]
+    def __call__(self, matrix_pose: np.ndarray, qpos: np.ndarray):
+        self.data.qpos[:self.model.nq] = qpos
+        mujoco.mj_forward(self.model, self.data)
+        for body_id, body_node in self.body_nodes.items():
+            body_transform = np.eye(4)
+            body_transform[:3, :3] = Rotation.from_quat(self.data.xquat[body_id], scalar_first=True).as_matrix()
+            body_transform[:3, 3] = self.data.xpos[body_id]
+            body_node.matrix = matrix_pose @ body_transform
+
+def widowx_renderer(scene: pyrender.Scene):
+    model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    return ArmRenderer(scene, model, data, "wx250s/gripper_link")

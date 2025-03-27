@@ -7,7 +7,7 @@ import trimesh
 import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
-from widowx import widowx_arm, Arm
+from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
 from tqdm import tqdm
 import trimesh_utils as trimesh_utils
 
@@ -23,11 +23,13 @@ class GraspTarget:
 class RobotState:
     gripper_pose: np.ndarray
     arm_pose: np.ndarray
+    joint_angle: np.ndarray
     grasped_object_id: Optional[int] = None
 
-    def __init__(self, arm_pose: np.ndarray):
+    def __init__(self, arm_pose: np.ndarray, joint_angle: Optional[np.ndarray] = None):
         self.gripper_pose = np.eye(4)
         self.arm_pose = arm_pose
+        self.joint_angle = joint_angle if joint_angle is not None else np.array([])
         self.grasped_object_id = None
 
 @dataclass
@@ -122,8 +124,7 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
-    arm_nodes: Dict[int, pyrender.Node]
-    arms: Dict[int, Arm]
+    arm_renderers: Dict[int, ArmRenderer]
     gripper_speed: float = 0.1  # Speed of gripper movement per step
 
     def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_arms: int, num_cameras: int, image_width: int = 480, image_height: int = 480):
@@ -148,14 +149,11 @@ class Renderer:
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
 
-        # Add arms
-        self.arms = {}
-        arm_nodes = {}
+        # Add arm renderers
+        arm_renderers = {}
         for arm_id in range(num_arms):
-            arm_node, arm = widowx_arm()
-            scene.add_node(arm_node)
-            self.arms[arm_id] = arm
-            arm_nodes[arm_id] = arm_node
+            # widowx_renderer returns the ArmRenderer object directly
+            arm_renderers[arm_id] = widowx_renderer(scene)
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
 
@@ -164,26 +162,17 @@ class Renderer:
         self.camera_intrinsics = camera_intrinsics
         self.camera_nodes = camera_nodes
         self.object_nodes = object_nodes
-        self.arm_nodes = arm_nodes
+        self.arm_renderers = arm_renderers
+
     def __call__(self, state: EnvironmentState):
         for obj_id, obj_state in state.object_states.items():
             self.object_nodes[obj_id].matrix = obj_state.pose
         
-        # Control all arms based on their poses in policy state
-        for arm_id, arm in self.arms.items():
+        # Update arm renderers with joint states
+        for arm_id, arm_renderer in self.arm_renderers.items():
             if arm_id in state.robot_states:
                 robot_state = state.robot_states[arm_id]
-                target_open = 1.0 if robot_state.grasped_object_id is None else 0.0
-                current_open = 1.0 if state.robot_states[arm_id].grasped_object_id is None else 0.0
-                
-                # Gradually move towards target
-                if current_open < target_open:
-                    current_open = min(current_open + self.gripper_speed, target_open)
-                elif current_open > target_open:
-                    current_open = max(current_open - self.gripper_speed, target_open)
-                # convert to arm frame
-                arm.go_to_pose(np.linalg.inv(state.robot_states[arm_id].arm_pose) @ robot_state.gripper_pose, open_amount=current_open)
-                self.arm_nodes[arm_id].matrix = state.robot_states[arm_id].arm_pose
+                arm_renderer(robot_state.arm_pose, robot_state.joint_angle)
         
         observations = []
         for cam_idx, camera_state in enumerate(state.camera_states):
@@ -217,7 +206,7 @@ class Environment:
         return new_state
     
 class Policy:
-    def __init__(self, grasps: List[GraspTarget], init_state: EnvironmentState, num_steps: int = 25):
+    def __init__(self, arm_controllers: Dict[int, ArmController], grasps: List[GraspTarget], init_state: EnvironmentState, num_steps: int = 25):
         # Create waypoints for each arm separately
         arm_waypoints = {}
         arm_object_ids = {}
@@ -242,6 +231,7 @@ class Policy:
         # Generate separate trajectories for each arm
         self.arm_trajectories = {}
         self.arm_object_id_trajectories = {}
+        self.arm_joint_angle_trajectories = {}
         
         for arm_id in arm_waypoints.keys():
             if arm_waypoints[arm_id]:  # If this arm has waypoints
@@ -250,11 +240,28 @@ class Policy:
                     arm_object_ids[arm_id], 
                     num_steps=num_steps
                 )
+                
+                # Compute IK for all waypoints upfront and cache
+                joint_angle_trajectory = []
+                arm_controller = arm_controllers[arm_id]
+                previous_joint_angle = None
+                
+                for pose, obj_id in tqdm(zip(poses, object_ids), total=len(poses), desc=f"Processing arm {arm_id} waypoints"):
+                    # Convert to arm frame
+                    local_pose = np.linalg.inv(init_state.robot_states[arm_id].arm_pose) @ pose
+                    open_amount = 1.0 if obj_id is None else 0.0
+                    # ArmController.__call__ returns (joint_angle, arm_pose)
+                    joint_angle, _ = arm_controller(local_pose, open_amount, previous_joint_angle)
+                    joint_angle_trajectory.append(joint_angle.copy())
+                    previous_joint_angle = joint_angle.copy()
+                
                 self.arm_trajectories[arm_id] = poses
                 self.arm_object_id_trajectories[arm_id] = object_ids
+                self.arm_joint_angle_trajectories[arm_id] = joint_angle_trajectory
             else:  # If this arm has no waypoints, create empty lists
                 self.arm_trajectories[arm_id] = []
                 self.arm_object_id_trajectories[arm_id] = []
+                self.arm_joint_angle_trajectories[arm_id] = []
                 
     def __call__(self, state: EnvironmentState) -> Dict[int, RobotState]:
         # Get all arm IDs from current state
@@ -262,7 +269,7 @@ class Policy:
         
         # Copy current state
         for arm_id, robot_state in state.robot_states.items():
-            next_policy_state[arm_id] = RobotState(robot_state.arm_pose.copy())
+            next_policy_state[arm_id] = RobotState(robot_state.arm_pose.copy(), robot_state.joint_angle.copy() if robot_state.joint_angle is not None else None)
             next_policy_state[arm_id].gripper_pose = robot_state.gripper_pose.copy()
             next_policy_state[arm_id].grasped_object_id = robot_state.grasped_object_id
             
@@ -271,6 +278,7 @@ class Policy:
             if self.arm_trajectories[arm_id]:  # If this arm has waypoints left
                 next_policy_state[arm_id].gripper_pose = self.arm_trajectories[arm_id].pop(0).copy()
                 next_policy_state[arm_id].grasped_object_id = self.arm_object_id_trajectories[arm_id].pop(0)
+                next_policy_state[arm_id].joint_angle = self.arm_joint_angle_trajectories[arm_id].pop(0).copy()
 
         return next_policy_state
     
@@ -303,6 +311,9 @@ if __name__ == "__main__":
             robot_states = {}
             grasps = []
 
+            # Create arm controllers for initialization
+            arm_controllers = {arm_id: widowx_controller() for arm_id in range(num_arms)}
+
             for arm_id in range(num_arms):
                 arm_translation = spatial_utils.spherical_to_cartesian(
                     *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
@@ -312,7 +323,13 @@ if __name__ == "__main__":
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
                 arm_transform[:3, 3] = arm_translation
-                robot_states[arm_id] = RobotState(arm_transform)
+                
+                # Initialize joint_angle with default configuration
+                controller = arm_controllers[arm_id]
+                initial_joint_angle = controller.model.key_qpos[0].copy()
+                
+                robot_states[arm_id] = RobotState(arm_transform, initial_joint_angle)
+                
                 # Arm grasps
                 grasp_start_transform = np.eye(4)
                 grasp_start_transform[2, 3] = 0.25
@@ -335,7 +352,7 @@ if __name__ == "__main__":
             env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             environment = Environment(grasps)
             num_steps = 25
-            policy = Policy(grasps, env_state, num_steps=num_steps)
+            policy = Policy(arm_controllers, grasps, env_state, num_steps=num_steps)
             renderer = Renderer(default_scene(), object_meshes, num_arms, num_cameras)
             steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
             steps_per_episode = 100
@@ -356,6 +373,7 @@ if __name__ == "__main__":
                         ),
                     )
                     rr.log(f"world/arm_{arm_id}/object_id", rr.Scalar(robot_state.grasped_object_id))
+                    rr.log(f"world/arm_{arm_id}/joint_angle", rr.Tensor(robot_state.joint_angle))
                 for camera_id, camera_data in enumerate(observations):
                     rr.log(
                         f"world/{camera_id}",
