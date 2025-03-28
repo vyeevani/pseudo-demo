@@ -6,10 +6,11 @@ from PIL import Image
 def make_image(df, entity, row):
     image_bytes = bytes(df[row][f"{entity}:ImageBuffer"][0][0])
     image_format = rr.datatypes.ImageFormat(**(df[row][f"{entity}:ImageFormat"][0][0]))
-    if image_format.color_model:
-        mode = str(image_format.color_model)
-    else:
+    print(image_format)
+    if image_format.channel_datatype == rr.datatypes.ChannelDatatype.F32:
         mode = "F"
+    elif image_format.color_model:
+        mode = str(image_format.color_model)
     image_buffer = np.frombuffer(image_bytes, image_format.channel_datatype.to_np_dtype())
     image = Image.frombuffer(mode, (image_format.width, image_format.height), image_buffer)
     return image
@@ -50,6 +51,14 @@ def make_rr_dataset(path):
 
 df = make_rr_dataset("dataset.rrd")
 print(df.columns)
+
+import matplotlib.pyplot as plt
+
+image = make_image(df, "/world/0/mask", 0)
+print(image)
+plt.imshow(np.array(image))
+plt.axis('off')
+plt.show()
 # print(np.array(make_scalars(df, "/world/arm_0/joint_angle", 0)))
 # print(get_meta_episode(df, 0))
 # print(get_episode(get_meta_episode(df, 0), 0))
