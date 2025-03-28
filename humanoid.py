@@ -67,19 +67,23 @@ class ArmController:
     model: mujoco.MjModel
     data: mujoco.MjData
     eef_id: int
-    gripper_joint_ids: List[int]
+    gripper_joint_ids: Optional[List[int]]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: List[str]):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: Optional[List[str]] = None):
         self.model = model
         self.data = data
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
-        self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
+        if gripper_joint_names:
+            self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
+        else:
+            self.gripper_joint_ids = None
     def __call__(self, target_pose: np.ndarray, open_amount: float, hint: Optional[np.ndarray] = None):
-        root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
-        root_to_gripper_transform = np.eye(4)
-        root_to_gripper_transform[:3, 3] = root_to_gripper_translation
-        gripper_to_root_transform = np.linalg.inv(root_to_gripper_transform)
-        target_pose = gripper_to_root_transform @ target_pose
+        if self.gripper_joint_ids:
+            root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
+            root_to_gripper_transform = np.eye(4)
+            root_to_gripper_transform[:3, 3] = root_to_gripper_translation
+            gripper_to_root_transform = np.linalg.inv(root_to_gripper_transform)
+            target_pose = gripper_to_root_transform @ target_pose
         if hint is None:
             hint = self.data.qpos
         self.data.qpos[:self.model.nq] = hint
@@ -136,7 +140,7 @@ def widowx_controller():
     model = mujoco.MjModel.from_xml_path("humanoid/humanoid.xml")
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmController(model, data, "lower_arm_left", ["hand_left"])
+    return ArmController(model, data, "hand_left", [])
 
 @dataclass
 class ArmRenderer:
@@ -168,7 +172,7 @@ def widowx_renderer(scene: pyrender.Scene):
     model = mujoco.MjModel.from_xml_path("humanoid/humanoid.xml")
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmRenderer(scene, model, data, "lower_arm_left")
+    return ArmRenderer(scene, model, data, "hand_left")
 
 # scene = pyrender.Scene()
 # renderer = widowx_renderer(scene)
