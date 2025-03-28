@@ -179,11 +179,16 @@ class Renderer:
             camera_node = self.camera_nodes[cam_idx]
             camera_node.matrix = camera_state.pose
             self.scene.main_camera_node = camera_node
+            
+            # Standard color and depth rendering
             flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
             color, depth = self.renderer.render(self.scene, flags=flags)
+            mask = (depth > 0).astype(np.float32)
+
             frame_observations = {
                 'color': color,
                 'depth': depth,
+                'mask': mask,
                 'camera_intrinsics': self.camera_intrinsics[cam_idx],
                 'camera_pose': camera_node.matrix
             }
@@ -285,9 +290,9 @@ class Policy:
 if __name__ == "__main__":
     num_examples = 1
     num_demonstrations = 1
-    num_cameras = 4
-    num_objects = 2
-    num_arms = 2
+    num_cameras = 1
+    num_objects = 4
+    num_arms = 1
 
     rr.init("Rigid Manipulation Demo", spawn=True)
     # rr.save("dataset.rrd")
@@ -373,7 +378,8 @@ if __name__ == "__main__":
                         ),
                     )
                     rr.log(f"world/arm_{arm_id}/object_id", rr.Scalar(robot_state.grasped_object_id))
-                    rr.log(f"world/arm_{arm_id}/joint_angle", rr.Tensor(robot_state.joint_angle))
+                    # TODO: this is hacky and not great but tensor is not supported in dataframe
+                    rr.log(f"world/arm_{arm_id}/joint_angle", rr.Scalar(robot_state.joint_angle.astype(np.float32)))
                 for camera_id, camera_data in enumerate(observations):
                     rr.log(
                         f"world/{camera_id}",
@@ -390,3 +396,4 @@ if __name__ == "__main__":
                     ))
                     rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
                     rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
+                    rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))

@@ -26,8 +26,11 @@ def make_pinhole(df, entity, row):
     transform = make_transform(df, entity, row)
     return intrinsics, transform
 
-def make_scalar(df, entity, row):
+def make_scalars(df, entity, row):
     return df[row][f"{entity}:Scalar"][0]
+
+def make_tensor(df, entity, row):
+    return np.array(df[row][f"{entity}:Tensor"][0][0])
 
 def get_meta_episode(df: pl.DataFrame, meta_episode_number: int):
     return df.filter(pl.col("meta_episode_number") == meta_episode_number)
@@ -46,9 +49,10 @@ def make_rr_dataset(path):
     return df
 
 df = make_rr_dataset("dataset.rrd")
-print(df)
-print(get_meta_episode(df, 0))
-print(get_episode(get_meta_episode(df, 0), 0))
-episode = get_episode(get_meta_episode(df, 0), 0)
-print(make_image(episode, "/world/0/color", 0))
-print(make_image(episode, "/world/0/depth", 0))
+print(df.columns)
+# print(np.array(make_scalars(df, "/world/arm_0/joint_angle", 0)))
+# print(get_meta_episode(df, 0))
+# print(get_episode(get_meta_episode(df, 0), 0))
+# episode = get_episode(get_meta_episode(df, 0), 0)
+# print(make_image(episode, "/world/0/color", 0))
+# print(make_image(episode, "/world/0/depth", 0))
