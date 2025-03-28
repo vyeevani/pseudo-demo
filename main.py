@@ -7,7 +7,8 @@ import trimesh
 import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
-from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
+# from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
+from humanoid import widowx_controller, widowx_renderer, ArmRenderer, ArmController
 from tqdm import tqdm
 import trimesh_utils as trimesh_utils
 
@@ -290,13 +291,13 @@ class Policy:
 if __name__ == "__main__":
     num_examples = 1
     num_demonstrations = 1
-    num_cameras = 1
-    num_objects = 4
+    num_cameras = 4
+    num_objects = 1
     num_arms = 1
 
-    # rr.init("Rigid Manipulation Demo", spawn=True)
-    rr.init("Rigid Manipulation Demo")
-    rr.save("dataset.rrd")
+    rr.init("Rigid Manipulation Demo", spawn=True)
+    # rr.init("Rigid Manipulation Demo")
+    # rr.save("dataset.rrd")
     unique_frame_id = 0
 
     for example in range(num_examples):
@@ -324,17 +325,16 @@ if __name__ == "__main__":
                 arm_translation = spatial_utils.spherical_to_cartesian(
                     *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
                 )
+                arm_translation[2] -= 2
                 desired_forward = -arm_translation / np.linalg.norm(arm_translation)
                 arm_rotation = spatial_utils.look_at_rotation(default_forward, desired_forward, default_up, desired_up)
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
                 arm_transform[:3, 3] = arm_translation
                 
-                # Initialize joint_angle with default configuration
                 controller = arm_controllers[arm_id]
-                initial_joint_angle = controller.model.key_qpos[0].copy()
-                
-                robot_states[arm_id] = RobotState(arm_transform, initial_joint_angle)
+
+                robot_states[arm_id] = RobotState(arm_transform)
                 
                 # Arm grasps
                 grasp_start_transform = np.eye(4)
