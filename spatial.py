@@ -89,7 +89,7 @@ def random_rotation(random_x: bool = True, random_y: bool = True, random_z: bool
     T = np.eye(4)
     T[:3, :3] = R
     
-    return T
+    return T.copy()
 
 def translate_pose(pose: np.ndarray, translation: np.ndarray) -> np.ndarray:
     """Translate a pose matrix to a new translation."""

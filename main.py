@@ -54,15 +54,15 @@ class CameraState:
     pose: np.ndarray
 
     def __init__(self):
-        default_forward = np.array([0, 0, -1])
-        default_up = np.array([0, 1, 0])
+        default_forward = np.array([0, 0, -1]).copy()
+        default_up = np.array([0, 1, 0]).copy()
         desired_forward = -spatial_utils.spherical_to_cartesian(
             *spatial_utils.random_spherical_coordinates()
-        )
-        desired_up = np.array([0, 0, 1])
-        self.pose = spatial_utils.look_at_rotation(default_forward, desired_forward, default_up, desired_up)
-        self.pose = np.hstack((self.pose, -desired_forward.reshape(3, 1)))
-        self.pose = np.vstack((self.pose, np.array([0, 0, 0, 1])))
+        ).copy()
+        desired_up = np.array([0, 0, 1]).copy()
+        self.pose = spatial_utils.look_at_rotation(default_forward, desired_forward, default_up, desired_up).copy()
+        self.pose = np.hstack((self.pose, -desired_forward.reshape(3, 1))).copy()
+        self.pose = np.vstack((self.pose, np.array([0, 0, 0, 1]))).copy()
 
 @dataclass
 class EnvironmentState:
@@ -325,12 +325,13 @@ if __name__ == "__main__":
                 arm_translation = spatial_utils.spherical_to_cartesian(
                     *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
                 )
-                arm_translation[2] -= 2
                 desired_forward = -arm_translation / np.linalg.norm(arm_translation)
-                arm_rotation = spatial_utils.look_at_rotation(default_forward, desired_forward, default_up, desired_up)
+                arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
-                arm_transform[:3, 3] = arm_translation
+                arm_translation_new = arm_translation.copy()
+                arm_translation_new[2] -= 1
+                arm_transform[:3, 3] = arm_translation_new.copy()
                 
                 controller = arm_controllers[arm_id]
 
