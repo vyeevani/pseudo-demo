@@ -7,8 +7,8 @@ import trimesh
 import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
-# from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
-from humanoid import widowx_controller, widowx_renderer, ArmRenderer, ArmController
+from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
+# from humanoid import widowx_controller, widowx_renderer, ArmRenderer, ArmController
 from tqdm import tqdm
 import trimesh_utils as trimesh_utils
 
@@ -330,7 +330,7 @@ if __name__ == "__main__":
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
                 arm_translation_new = arm_translation.copy()
-                arm_translation_new[2] -= 1.15
+                # arm_translation_new[2] -= 1.15
                 arm_transform[:3, 3] = arm_translation_new.copy()
                 
                 controller = arm_controllers[arm_id]
@@ -340,9 +340,9 @@ if __name__ == "__main__":
                 # Arm grasps
                 grasp_start_transform = np.eye(4)
                 grasp_start_transform[2, 3] = 0.25
-                # grasp_start_transform[0, 3] = 0.25
-                # grasp_start = arm_transform @ grasp_start_transform
-                grasp_start = grasp_start_transform
+                grasp_start_transform[0, 3] = 0.25
+                grasp_start = arm_transform @ grasp_start_transform
+                # grasp_start = grasp_start_transform
                 grasp_end = grasp_start.copy()
 
                 # Create grasp for the arm
