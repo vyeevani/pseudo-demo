@@ -330,6 +330,9 @@ if __name__ == "__main__":
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
                 arm_translation_new = arm_translation.copy()
+                
+                # if the robot is a humanoid, we have to offset it's body by 1.15 meters in the z direction
+                # to account for the fact that the humanoid's body is offset from the ground
                 # arm_translation_new[2] -= 1.15
                 arm_transform[:3, 3] = arm_translation_new.copy()
                 
@@ -339,10 +342,7 @@ if __name__ == "__main__":
                 
                 # Arm grasps
                 grasp_start_transform = np.eye(4)
-                grasp_start_transform[2, 3] = 0.25
-                grasp_start_transform[0, 3] = 0.25
-                grasp_start = arm_transform @ grasp_start_transform
-                # grasp_start = grasp_start_transform
+                grasp_start = arm_transform @ controller.pose
                 grasp_end = grasp_start.copy()
 
                 # Create grasp for the arm

@@ -77,6 +77,24 @@ class ArmController:
             self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
         else:
             self.gripper_joint_ids = None
+
+    @property
+    def pose(self) -> np.ndarray:
+        """
+        Returns the current end-effector pose as a 4x4 homogeneous transformation matrix.
+        """
+        current_translation = self.data.xpos[self.eef_id]
+        current_rotation = Rotation.from_quat(self.data.xquat[self.eef_id], scalar_first=True).as_matrix()
+        current_pose = np.eye(4)
+        current_pose[:3, :3] = current_rotation
+        current_pose[:3, 3] = current_translation
+        if self.gripper_joint_ids:
+            root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
+            root_to_gripper_transform = np.eye(4)
+            root_to_gripper_transform[:3, 3] = root_to_gripper_translation
+            current_pose = root_to_gripper_transform @ current_pose
+        return current_pose
+    
     def __call__(self, target_pose: np.ndarray, open_amount: float, hint: Optional[np.ndarray] = None):
         if self.gripper_joint_ids:
             root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)

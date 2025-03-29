@@ -2,6 +2,7 @@ from robot import ArmController, ArmRenderer
 import mujoco
 import pyrender
 import numpy as np
+
 def widowx_controller():
     model = mujoco.MjModel.from_xml_path("humanoid/humanoid.xml")
     data = mujoco.MjData(model)
