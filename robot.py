@@ -7,6 +7,19 @@ from robot_descriptions import widow_mj_description
 from dataclasses import dataclass
 from typing import Dict, Optional, List
 
+@dataclass
+class RobotState:
+    gripper_pose: np.ndarray
+    arm_pose: np.ndarray
+    joint_angle: np.ndarray
+    grasped_object_id: Optional[int] = None
+
+    def __init__(self, arm_pose: np.ndarray, joint_angle: Optional[np.ndarray] = None):
+        self.gripper_pose = np.eye(4)
+        self.arm_pose = arm_pose
+        self.joint_angle = joint_angle if joint_angle is not None else np.array([])
+        self.grasped_object_id = None
+
 def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
     body_to_geom_nodes = {}
 
