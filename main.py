@@ -297,9 +297,10 @@ def make_widowx(scene: pyrender.Scene):
     
 if __name__ == "__main__":
     num_examples = 1
-    num_demonstrations = 1
     num_cameras = 4
     num_objects = 1
+    num_humanoid_demos = 1
+    num_widowx_demos = 1
     num_arms = 1
 
     rr.init("Rigid Manipulation Demo", spawn=True)
@@ -314,7 +315,7 @@ if __name__ == "__main__":
         # Initialize camera states once to retain positions between demos
         camera_states = [CameraState() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)
-        for demo in range(num_demonstrations):
+        for demo in range(num_humanoid_demos + num_widowx_demos):
             rr.set_time_sequence("episode_number", demo)
             arm_transforms = {}
 
@@ -327,7 +328,10 @@ if __name__ == "__main__":
 
             # Create arm controllers for initialization
             scene = default_scene()
-            arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
+            if demo < num_humanoid_demos:
+                arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
+            else:
+                arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
 
             for arm_id in range(num_arms):                
                 controller, renderer, arm_transform = arm_controllers[arm_id]
