@@ -327,18 +327,18 @@ if __name__ == "__main__":
 
             # Create arm controllers for initialization
             scene = default_scene()
-            arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
+            arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
 
-            for arm_id in range(num_arms):
+            for arm_id in range(num_arms):                
+                controller, renderer, arm_transform = arm_controllers[arm_id]
+
                 arm_translation = spatial_utils.spherical_to_cartesian(
                     *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
                 )
                 desired_forward = -arm_translation / np.linalg.norm(arm_translation)
                 arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
-                arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
-                
-                controller, renderer, _ = arm_controllers[arm_id]
+                arm_transform[:3, 3] += arm_translation
 
                 robot_states[arm_id] = RobotState(arm_transform)
                 
