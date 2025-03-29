@@ -1,26 +1,21 @@
-from copy import deepcopy
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-from typing_extensions import Self
 import numpy as np
 import pyrender
 import trimesh
 import rerun as rr
-import spatial as spatial_utils
-import trajectory as trajectory_utils
 from tqdm import tqdm
-import trimesh_utils as trimesh_utils
 
+from agent.policy import Policy, GraspTarget
+from sim.environment import Environment
+from agent.robot import RobotState
+from sim.camera import Camera
+from sim.object import Object
+from sim.scene import default_scene
+from sim.renderer import Renderer
+from agent.widowx import widowx_controller, widowx_renderer
+from agent.humanoid import humanoid_controller, humanoid_renderer
 
-from policy import Policy, GraspTarget
-from environment import Environment
-from robot import RobotState
-from camera import CameraState
-from object import ObjectState
-from scene import default_scene
-from renderer import Renderer
-from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
-from humanoid import humanoid_controller, humanoid_renderer, ArmRenderer, ArmController
+import utils.spatial as spatial_utils
+import utils.trimesh as trimesh_utils
     
 def make_humanoid(scene: pyrender.Scene):
     controller = humanoid_controller()
@@ -53,7 +48,7 @@ if __name__ == "__main__":
         object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
 
         # Initialize camera states once to retain positions between demos
-        camera_states = [CameraState() for _ in range(num_cameras)]
+        camera_states = [Camera() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)
         for demo in range(num_humanoid_demos + num_widowx_demos):
             rr.set_time_sequence("episode_number", demo)
@@ -102,7 +97,7 @@ if __name__ == "__main__":
                     )
                 )
 
-            object_states = {i: ObjectState(bounding_box_radius=0.1) for i in range(num_objects)}
+            object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
             env = Environment(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             num_steps = 25
             policy = Policy({arm_id: controller for arm_id, (controller, _, _) in arm_controllers.items()}, grasps, env, num_steps=num_steps)

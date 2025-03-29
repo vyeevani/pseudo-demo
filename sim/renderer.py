@@ -5,8 +5,8 @@ import numpy as np
 import pyrender
 import trimesh
 
-from robot import ArmRenderer
-from environment import Environment
+from agent.robot import ArmRenderer
+from sim.environment import Environment
 
 @dataclass
 class Renderer:

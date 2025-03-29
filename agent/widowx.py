@@ -1,4 +1,4 @@
-from robot import ArmController, ArmRenderer
+from agent.robot import ArmController, ArmRenderer
 import mujoco
 import pyrender
 from robot_descriptions import widow_mj_description

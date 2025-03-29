@@ -2,10 +2,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-import spatial as spatial_utils
+import utils.spatial as spatial_utils
 
 @dataclass
-class CameraState:
+class Camera:
     pose: np.ndarray
 
     def __init__(self):

@@ -5,14 +5,14 @@ from copy import deepcopy
 
 import numpy as np
 
-from camera import CameraState
-from object import ObjectState
-from robot import RobotState
+from sim.camera import Camera
+from sim.object import Object
+from agent.robot import RobotState
 
 @dataclass
 class Environment:
-    camera_states: List[CameraState]
-    object_states: Dict[int, ObjectState]
+    camera_states: List[Camera]
+    object_states: Dict[int, Object]
     robot_states: Dict[int, RobotState]
     finished: bool
 

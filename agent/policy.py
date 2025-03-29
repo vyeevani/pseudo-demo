@@ -4,9 +4,9 @@ from copy import deepcopy
 import numpy as np
 from tqdm import tqdm
 
-from environment import Environment
-from robot import ArmController, RobotState
-import trajectory as trajectory_utils
+from sim.environment import Environment
+from agent.robot import ArmController, RobotState
+import utils.trajectory as trajectory_utils
 
 @dataclass
 class GraspTarget:

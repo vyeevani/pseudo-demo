@@ -1,10 +1,10 @@
 import numpy as np
 from dataclasses import dataclass
 
-import spatial as spatial_utils
+import utils.spatial as spatial_utils
 
 @dataclass
-class ObjectState:
+class Object:
     pose: np.ndarray
 
     def __init__(self, bounding_box_radius: float = 0.1):
