@@ -8,7 +8,7 @@ import rerun as rr
 import spatial as spatial_utils
 import trajectory as trajectory_utils
 from widowx import widowx_controller, widowx_renderer, ArmRenderer, ArmController
-# from humanoid import widowx_controller, widowx_renderer, ArmRenderer, ArmController
+from humanoid import humanoid_controller, humanoid_renderer, ArmRenderer, ArmController
 from tqdm import tqdm
 import trimesh_utils as trimesh_utils
 
@@ -126,9 +126,9 @@ class Renderer:
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
     arm_renderers: Dict[int, ArmRenderer]
-    gripper_speed: float = 0.1  # Speed of gripper movement per step
+    gripper_speed: float = 0.1
 
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], num_arms: int, num_cameras: int, image_width: int = 480, image_height: int = 480):
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], arm_renderers: Dict[int, ArmRenderer], num_cameras: int, image_width: int = 480, image_height: int = 480):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
         fx = image_width / (2 * np.tan(yfov / 2))
@@ -149,12 +149,6 @@ class Renderer:
         object_nodes = {i: pyrender.Node(mesh=pyrender.Mesh.from_trimesh(object_meshes[i]), matrix=np.eye(4)) for i in range(num_objects)}
         [scene.add_node(camera_node) for camera_node in camera_nodes]
         [scene.add_node(object_node) for object_node in object_nodes.values()]
-
-        # Add arm renderers
-        arm_renderers = {}
-        for arm_id in range(num_arms):
-            # widowx_renderer returns the ArmRenderer object directly
-            arm_renderers[arm_id] = widowx_renderer(scene)
 
         renderer = pyrender.OffscreenRenderer(viewport_width=image_width, viewport_height=image_height)
 
@@ -288,6 +282,19 @@ class Policy:
 
         return next_policy_state
     
+def make_humanoid(scene: pyrender.Scene):
+    controller = humanoid_controller()
+    renderer = humanoid_renderer(scene)
+    transform = np.eye(4)
+    transform[:3, 3] = np.array([0, 0, -1.15])
+    return controller, renderer, transform
+
+def make_widowx(scene: pyrender.Scene):
+    controller = widowx_controller()
+    renderer = widowx_renderer(scene)
+    transform = np.eye(4)
+    return controller, renderer, transform
+    
 if __name__ == "__main__":
     num_examples = 1
     num_demonstrations = 1
@@ -319,7 +326,8 @@ if __name__ == "__main__":
             grasps = []
 
             # Create arm controllers for initialization
-            arm_controllers = {arm_id: widowx_controller() for arm_id in range(num_arms)}
+            scene = default_scene()
+            arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
 
             for arm_id in range(num_arms):
                 arm_translation = spatial_utils.spherical_to_cartesian(
@@ -329,14 +337,8 @@ if __name__ == "__main__":
                 arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
                 arm_transform = np.eye(4)
                 arm_transform[:3, :3] = arm_rotation
-                arm_translation_new = arm_translation.copy()
                 
-                # if the robot is a humanoid, we have to offset it's body by 1.15 meters in the z direction
-                # to account for the fact that the humanoid's body is offset from the ground
-                # arm_translation_new[2] -= 1.15
-                arm_transform[:3, 3] = arm_translation_new.copy()
-                
-                controller = arm_controllers[arm_id]
+                controller, renderer, _ = arm_controllers[arm_id]
 
                 robot_states[arm_id] = RobotState(arm_transform)
                 
@@ -360,8 +362,8 @@ if __name__ == "__main__":
             env_state = EnvironmentState(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             environment = Environment(grasps)
             num_steps = 25
-            policy = Policy(arm_controllers, grasps, env_state, num_steps=num_steps)
-            renderer = Renderer(default_scene(), object_meshes, num_arms, num_cameras)
+            policy = Policy({arm_id: controller for arm_id, (controller, _, _) in arm_controllers.items()}, grasps, env_state, num_steps=num_steps)
+            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _) in arm_controllers.items()}, num_cameras)
             steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
             steps_per_episode = 100
 
