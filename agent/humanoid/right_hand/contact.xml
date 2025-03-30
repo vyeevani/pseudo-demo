@@ -1,0 +1,4 @@
+<contact>
+    <exclude body1="rh_wrist" body2="rh_forearm" />
+    <exclude body1="rh_thproximal" body2="rh_thmiddle" />
+</contact>

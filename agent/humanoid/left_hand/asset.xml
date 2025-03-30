@@ -1,0 +1,19 @@
+<asset>
+    <material name="black" specular="0.5" shininess="0.25" rgba="0.16355 0.16355 0.16355 1"/>
+    <material name="gray" specular="0.0" shininess="0.25" rgba="0.80848 0.80848 0.80848 1"/>
+    <material name="metallic" specular="0" shininess="0.25" rgba="0.9 0.9 0.9 1"/>
+
+    <mesh class="left_hand" file="forearm_0.obj"/>
+    <mesh class="left_hand" file="forearm_1.obj"/>
+    <mesh class="left_hand" file="forearm_collision.obj"/>
+    <mesh class="left_hand" file="wrist.obj" scale="-0.001 0.001 0.001"/>
+    <mesh class="left_hand" file="palm.obj" scale="-0.001 0.001 0.001"/>
+    <mesh class="left_hand" file="f_knuckle.obj"/>
+    <mesh class="left_hand" file="f_proximal.obj"/>
+    <mesh class="left_hand" file="f_middle.obj"/>
+    <mesh class="left_hand" file="f_distal_pst.obj"/>
+    <mesh class="left_hand" file="lf_metacarpal.obj" scale="-0.001 0.001 0.001"/>
+    <mesh class="left_hand" file="th_proximal.obj"/>
+    <mesh class="left_hand" file="th_middle.obj"/>
+    <mesh class="left_hand" file="th_distal_pst.obj"/>
+</asset>

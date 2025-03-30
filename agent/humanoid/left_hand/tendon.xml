@@ -1,0 +1,18 @@
+<tendon>
+    <fixed name="lh_FFJ0">
+        <joint joint="lh_FFJ2" coef="1" />
+        <joint joint="lh_FFJ1" coef="1" />
+    </fixed>
+    <fixed name="lh_MFJ0">
+        <joint joint="lh_MFJ2" coef="1" />
+        <joint joint="lh_MFJ1" coef="1" />
+    </fixed>
+    <fixed name="lh_RFJ0">
+        <joint joint="lh_RFJ2" coef="1" />
+        <joint joint="lh_RFJ1" coef="1" />
+    </fixed>
+    <fixed name="lh_LFJ0">
+        <joint joint="lh_LFJ2" coef="1" />
+        <joint joint="lh_LFJ1" coef="1" />
+    </fixed>
+</tendon>
