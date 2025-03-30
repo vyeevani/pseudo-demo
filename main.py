@@ -22,20 +22,20 @@ def make_humanoid(scene: pyrender.Scene):
     renderer = humanoid_renderer(scene)
     transform = np.eye(4)
     transform[:3, 3] = np.array([0, 0, -1.15])
-    eef_forward_vector = np.array([0, 0, 1])
+    eef_forward_vector = np.array([0, 0, -1])
     return controller, renderer, transform, eef_forward_vector
 
 def make_widowx(scene: pyrender.Scene):
     controller = widowx_controller()
     renderer = widowx_renderer(scene)
     transform = np.eye(4)
-    eef_forward_vector = np.array([1, 0, 0])
+    eef_forward_vector = np.array([-1, 0, 0])
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
     num_examples = 1
     num_cameras = 4
-    num_objects = 1
+    num_objects = 3
     num_humanoid_demos = 1
     num_widowx_demos = 1
     num_arms = 1
@@ -88,8 +88,8 @@ if __name__ == "__main__":
                 grasp_start = arm_transform @ controller.pose
                 grasp_end = grasp_start.copy()
 
-                object_point, object_face_normal = object_point_transforms[arm_id]
-                object_point_transform = trimesh.geometry.align_vectors(-eef_forward_vector, object_face_normal)
+                object_point, object_face_normal = object_point_transforms[0]
+                object_point_transform = trimesh.geometry.align_vectors(eef_forward_vector, object_face_normal)
                 object_point_transform[:3, 3] = object_point
 
                 # Create grasp for the arm
