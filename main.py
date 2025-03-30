@@ -22,13 +22,15 @@ def make_humanoid(scene: pyrender.Scene):
     renderer = humanoid_renderer(scene)
     transform = np.eye(4)
     transform[:3, 3] = np.array([0, 0, -1.15])
-    return controller, renderer, transform
+    eef_forward_vector = np.array([0, 0, 1])
+    return controller, renderer, transform, eef_forward_vector
 
 def make_widowx(scene: pyrender.Scene):
     controller = widowx_controller()
     renderer = widowx_renderer(scene)
     transform = np.eye(4)
-    return controller, renderer, transform
+    eef_forward_vector = np.array([1, 0, 0])
+    return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
     num_examples = 1
@@ -45,7 +47,7 @@ if __name__ == "__main__":
 
     for example in range(num_examples):
         object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
-        object_point_transforms = [trimesh_utils.object_point_transform(obj, np.array([-1, 0, 0])) for obj in object_meshes]
+        object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
 
         # Initialize camera states once to retain positions between demos
         camera_states = [Camera() for _ in range(num_cameras)]
@@ -69,7 +71,7 @@ if __name__ == "__main__":
                 arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
 
             for arm_id in range(num_arms):                
-                controller, renderer, arm_transform = arm_controllers[arm_id]
+                controller, renderer, arm_transform, eef_forward_vector = arm_controllers[arm_id]
 
                 arm_translation = spatial_utils.spherical_to_cartesian(
                     *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
@@ -86,13 +88,17 @@ if __name__ == "__main__":
                 grasp_start = arm_transform @ controller.pose
                 grasp_end = grasp_start.copy()
 
+                object_point, object_face_normal = object_point_transforms[arm_id]
+                object_point_transform = trimesh.geometry.align_vectors(-eef_forward_vector, object_face_normal)
+                object_point_transform[:3, 3] = object_point
+
                 # Create grasp for the arm
                 grasps.append(
                     GraspTarget(
                         object_id=arm_id, 
                         arm_id=arm_id, 
                         start_pose=grasp_start.copy(), 
-                        grasp_pose=object_point_transforms[arm_id], 
+                        grasp_pose=object_point_transform, 
                         end_pose=grasp_end.copy()
                     )
                 )
@@ -100,8 +106,8 @@ if __name__ == "__main__":
             object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
             env = Environment(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             num_steps = 25
-            policy = Policy({arm_id: controller for arm_id, (controller, _, _) in arm_controllers.items()}, grasps, env, num_steps=num_steps)
-            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _) in arm_controllers.items()}, num_cameras)
+            policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, grasps, env, num_steps=num_steps)
+            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
             steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
             steps_per_episode = 100
 
