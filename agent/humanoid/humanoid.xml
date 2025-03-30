@@ -27,7 +27,6 @@
     <default>
         <motor ctrlrange="-1 1" ctrllimited="true" />
         <default class="body">
-
             <!-- geoms -->
             <geom type="capsule" condim="1" friction=".7" solimp=".9 .99 .003" solref=".015 1"
                 material="body" group="1" />
