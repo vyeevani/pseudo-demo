@@ -19,7 +19,7 @@
     <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3"
       rgb2=".2 .3 .4" />
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2" />
-    <include file="right_hand/asset.xml" />
+    <!-- <include file="right_hand/asset.xml" /> -->
     <include file="left_hand/asset.xml" />
   </asset>
 
@@ -158,6 +158,8 @@
           <joint name="elbow_right" axis="0 -1 1" class="elbow" />
           <geom name="lower_arm_right" fromto=".01 .01 .01 .17 .17 .17" class="arm_lower" />
           <body name="hand_right" pos=".18 .18 .18">
+            <joint name="wrist_flex_right" axis="0 1 0" range="-70 70" />
+            <joint name="wrist_dev_right" axis="-1 0 0" range="-30 30" />
             <include file="right_hand/worldbody.xml" />
           </body>
         </body>
