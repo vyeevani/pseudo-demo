@@ -16,7 +16,7 @@ from agent.humanoid import humanoid_controller, humanoid_renderer
 
 import utils.spatial as spatial_utils
 import utils.trimesh as trimesh_utils
-    
+
 def make_humanoid(scene: pyrender.Scene):
     controller = humanoid_controller()
     renderer = humanoid_renderer(scene)

@@ -20,7 +20,7 @@ class RobotState:
         self.joint_angle = joint_angle if joint_angle is not None else np.array([])
         self.grasped_object_id = None
 
-def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
+def body_nodes_from_model(model: mujoco.MjModel, asset_path: str, mesh_extension: str):
     body_to_geom_nodes = {}
 
     for geom_id in range(model.ngeom):
@@ -30,7 +30,7 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str):
             if mesh_id < 0:
                 continue
             mesh_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, mesh_id)
-            mesh_path = f"{asset_path}/{mesh_name}.stl"
+            mesh_path = f"{asset_path}/{mesh_name}.{mesh_extension}"
             mesh = trimesh.load(mesh_path)
             scale = model.mesh_scale[mesh_id]
             mesh.apply_scale(scale)
@@ -178,11 +178,11 @@ class ArmRenderer:
     body_nodes: Dict[int, pyrender.Node]
     eef_id: int
 
-    def __init__(self, scene: pyrender.Scene, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str):
+    def __init__(self, scene: pyrender.Scene, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, asset_path: str, mesh_extension: str):
         self.model = model
         self.data = data
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
-        self.body_nodes = body_nodes_from_model(model, widow_mj_description.PACKAGE_PATH + "/assets")
+        self.body_nodes = body_nodes_from_model(model, asset_path, mesh_extension)
         [scene.add_node(body_node) for body_node in self.body_nodes.values()]
     def __call__(self, matrix_pose: np.ndarray, qpos: Optional[np.ndarray] = None):
         if qpos is not None:
