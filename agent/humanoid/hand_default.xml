@@ -1,0 +1,5 @@
+<default>
+    <default class="hand">
+        <mesh scale="0.001 0.001 0.001" />
+    </default>
+</default>

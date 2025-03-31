@@ -20,8 +20,7 @@
         <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3"
             rgb2=".2 .3 .4" />
         <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2" />
-        <!-- <include file="right_hand/asset.xml" /> -->
-        <include file="left_hand/asset.xml" />
+        <include file="hand_asset.xml" />
     </asset>
 
     <default>
@@ -50,9 +49,6 @@
             </default>
             <default class="arm_lower">
                 <geom size=".031" />
-            </default>
-            <default class="hand">
-                <geom type="sphere" size=".04" />
             </default>
 
             <!-- joints -->
@@ -92,6 +88,7 @@
                 <joint range="-100 50" stiffness="0" />
             </default>
         </default>
+        <include file="hand_default.xml" />
         <include file="right_hand/default.xml" />
         <include file="left_hand/default.xml" />
     </default>
