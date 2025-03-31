@@ -95,6 +95,7 @@ class ArmController:
             self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
         else:
             self.gripper_joint_ids = None
+        mujoco.mj_forward(self.model, self.data)
 
     @property
     def pose(self) -> np.ndarray:
@@ -188,7 +189,8 @@ class ArmRenderer:
         self.data = data
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
         self.body_nodes = body_nodes_from_model(model, asset_path, mesh_extension)
-        [scene.add_node(body_node) for body_node in self.body_nodes.values()]
+        for body_node in self.body_nodes.values():
+            scene.add_node(body_node)
     def __call__(self, matrix_pose: np.ndarray, qpos: Optional[np.ndarray] = None):
         if qpos is not None:
             self.data.qpos[:self.model.nq] = qpos

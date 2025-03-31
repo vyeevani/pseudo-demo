@@ -15,6 +15,7 @@ class Renderer:
     camera_intrinsics: List[np.ndarray]
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
+    arm_nodes: List[pyrender.Node]
     arm_renderers: Dict[int, ArmRenderer]
     gripper_speed: float = 0.1
 
@@ -49,6 +50,13 @@ class Renderer:
         self.object_nodes = object_nodes
         self.arm_renderers = arm_renderers
 
+        def get_node_tree(node):
+            children = [node]
+            for child in node.children:
+                children.extend(get_node_tree(child))
+            return children
+        self.arm_nodes = [child for arm_renderer in self.arm_renderers.values() for node in arm_renderer.body_nodes.values() for child in get_node_tree(node)]
+
     def __call__(self, env: Environment):
         for obj_id, obj_state in env.object_states.items():
             self.object_nodes[obj_id].matrix = obj_state.pose
@@ -66,8 +74,22 @@ class Renderer:
             self.scene.main_camera_node = camera_node
             
             # Standard color and depth rendering
-            flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
-            color, depth = self.renderer.render(self.scene, flags=flags)
+            # flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
+            # color, depth = self.renderer.render(self.scene, flags=flags)
+            # mask = (depth > 0).astype(np.float32)
+
+            seg_node_map = {}
+            seg_node_map.update({node: np.array([0, 0, 255]) for node in self.arm_nodes})
+            seg_node_map.update({node: np.array([0, 255, 0]) for node in self.object_nodes.values()})
+            # print("seg node map")
+            # print(seg_node_map)
+            # print("scene nodes")
+            # print(self.scene.nodes)
+            color, depth = self.renderer.render(
+                self.scene,  
+                flags=pyrender.RenderFlags.SEG | pyrender.RenderFlags.RGBA,
+                seg_node_map=seg_node_map,
+            )
             mask = (depth > 0).astype(np.float32)
 
             frame_observations = {

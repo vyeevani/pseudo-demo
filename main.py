@@ -49,11 +49,9 @@ if __name__ == "__main__":
     for example in range(num_examples):
         object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
-        object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
-
-        # Initialize camera states once to retain positions between demos
         camera_states = [Camera() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)
+
         for demo in range(num_humanoid_demos + num_widowx_demos):
             rr.set_time_sequence("episode_number", demo)
             arm_transforms = {}
@@ -72,6 +70,7 @@ if __name__ == "__main__":
             else:
                 arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
 
+            object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
             for arm_id in range(num_arms):                
                 controller, renderer, arm_transform, eef_forward_vector = arm_controllers[arm_id]
 
@@ -88,8 +87,9 @@ if __name__ == "__main__":
                 object_point_transform = trimesh.geometry.align_vectors(eef_forward_vector, object_face_normal)
                 object_point_transform[:3, 3] = object_point
 
-                initial_joint_angles, _ = controller(initial_eef_pose, 1.0)
-                robot_states[arm_id] = RobotState(arm_transform, initial_joint_angles, initial_eef_pose, grasped_object_id=None)
+                # initial_joint_angles, _ = controller(initial_eef_pose, 1.0)
+                # robot_states[arm_id] = RobotState(arm_transform, initial_joint_angles, initial_eef_pose, grasped_object_id=None)
+                robot_states[arm_id] = RobotState(arm_transform)
 
                 waypoints.append((arm_id, AbsoluteWaypoint(object_id=None, pose=initial_eef_pose)))
                 waypoints.append((arm_id, ObjectCentricWaypoint(object_id=0, pose=object_point_transform)))
@@ -100,6 +100,7 @@ if __name__ == "__main__":
             renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
             policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
+            steps_per_episode = 5
 
             for i in tqdm(range(steps_per_episode)):
                 rr.set_time_sequence("frame_id", unique_frame_id) # globally unique frame id
@@ -135,4 +136,4 @@ if __name__ == "__main__":
                     ))
                     rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
                     rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
-                    rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
+                    # rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
