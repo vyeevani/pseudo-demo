@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 from copy import deepcopy
 import numpy as np
 from tqdm import tqdm
@@ -9,35 +9,42 @@ from agent.robot import ArmController, RobotState
 import utils.trajectory as trajectory_utils
 
 @dataclass
-class GraspTarget:
+class ObjectCentricWaypoint: 
     object_id: int
-    arm_id: int
-    start_pose: np.ndarray
-    grasp_pose: np.ndarray
-    end_pose: np.ndarray
+    pose: np.ndarray
+
+@dataclass
+class AbsoluteWaypoint:
+    pose: np.ndarray
+    object_id: Optional[int] = None
+
+Waypoint = ObjectCentricWaypoint | AbsoluteWaypoint
 
 class Policy:
-    def __init__(self, arm_controllers: Dict[int, ArmController], grasps: List[GraspTarget], env: Environment, num_steps: int = 25):
+    def __init__(self, arm_controllers: Dict[int, ArmController], waypoints: List[Tuple[int, Waypoint]], env: Environment, num_steps: int = 25):
         # Create waypoints for each arm separately
         arm_waypoints = {}
         arm_object_ids = {}
         object_states = {obj_id: deepcopy(obj_state) for obj_id, obj_state in env.object_states.items()}
-        
+
         # Initialize empty lists for all arms in the state
         for arm_id in env.robot_states.keys():
             arm_waypoints[arm_id] = []
             arm_object_ids[arm_id] = []
-        
-        for grasp in grasps:
-            arm_id = grasp.arm_id
-            arm_waypoints[arm_id].append(grasp.start_pose.copy())
-            arm_object_ids[arm_id].append(None)
-            arm_waypoints[arm_id].append(object_states[grasp.object_id].pose @ grasp.grasp_pose.copy())
-            arm_object_ids[arm_id].append(grasp.object_id)
-            arm_waypoints[arm_id].append(grasp.end_pose.copy())
-            arm_object_ids[arm_id].append(None)
-            gripper_delta = grasp.end_pose @ np.linalg.inv(object_states[grasp.object_id].pose @ grasp.grasp_pose.copy())
-            object_states[grasp.object_id].pose = gripper_delta @ object_states[grasp.object_id].pose
+
+        for arm_id, waypoint in waypoints:
+            match waypoint:
+                case ObjectCentricWaypoint(object_id, pose):
+                    gripper_pose = object_states[object_id].pose.copy() @ pose.copy()
+                    arm_waypoints[arm_id].append(gripper_pose)
+                    arm_object_ids[arm_id].append(object_id)
+                case AbsoluteWaypoint(pose, object_id):
+                    gripper_pose = pose.copy()
+                    arm_waypoints[arm_id].append(gripper_pose)
+                    arm_object_ids[arm_id].append(object_id)
+                    if object_id != None:
+                        gripper_delta = gripper_pose.copy() @ np.linalg.inv(object_states[object_id].pose.copy())
+                        object_states[object_id].pose = gripper_delta.copy() @ object_states[object_id].pose.copy()
         
         # Generate separate trajectories for each arm
         self.arm_trajectories = {}

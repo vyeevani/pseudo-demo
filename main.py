@@ -5,7 +5,7 @@ import rerun as rr
 from tqdm import tqdm
 from copy import deepcopy
 
-from agent.policy import Policy, GraspTarget
+from agent.policy import Policy, AbsoluteWaypoint, ObjectCentricWaypoint
 from sim.environment import Environment
 from agent.robot import RobotState
 from sim.camera import Camera
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     num_cameras = 4
     num_objects = 1
     num_humanoid_demos = 1
-    num_widowx_demos = 1
+    num_widowx_demos = 0
     num_arms = 1
 
     rr.init("Rigid Manipulation Demo", spawn=True)
@@ -63,7 +63,7 @@ if __name__ == "__main__":
             desired_up = np.array([0, 0, 1])
 
             robot_states = {}
-            grasps = []
+            waypoints = []
 
             # Create arm controllers for initialization
             scene = default_scene()
@@ -82,37 +82,24 @@ if __name__ == "__main__":
                 arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
                 arm_transform[:3, :3] = arm_rotation
                 arm_transform[:3, 3] += arm_translation
-
-                robot_states[arm_id] = RobotState(arm_transform)
                 
-                # Arm grasps
-                grasp_start_transform = np.eye(4)
-                grasp_start = arm_transform @ controller.pose
-                grasp_end = grasp_start.copy()
-
+                initial_eef_pose = arm_transform @ controller.pose
                 object_point, object_face_normal = object_point_transforms[0]
                 object_point_transform = trimesh.geometry.align_vectors(eef_forward_vector, object_face_normal)
                 object_point_transform[:3, 3] = object_point
 
-                # Create grasp for the arm
-                grasps.append(
-                    GraspTarget(
-                        object_id=arm_id, 
-                        arm_id=arm_id, 
-                        start_pose=grasp_start.copy(), 
-                        grasp_pose=object_point_transform, 
-                        end_pose=grasp_end.copy()
-                    )
-                )
+                initial_joint_angles, _ = controller(initial_eef_pose, 1.0)
+                robot_states[arm_id] = RobotState(arm_transform, initial_joint_angles, initial_eef_pose, grasped_object_id=None)
 
-            # object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
-            object_states = deepcopy(object_states)
-            env = Environment(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
+                waypoints.append((arm_id, AbsoluteWaypoint(object_id=None, pose=initial_eef_pose)))
+                waypoints.append((arm_id, ObjectCentricWaypoint(object_id=0, pose=object_point_transform)))
+                waypoints.append((arm_id, AbsoluteWaypoint(object_id=0, pose=initial_eef_pose)))
+
+            env = Environment(camera_states=camera_states, object_states=deepcopy(object_states), robot_states=robot_states, finished=False)
             num_steps = 25
-            policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, grasps, env, num_steps=num_steps)
             renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
-            steps_per_episode = max(len([grasp for grasp in grasps if grasp.arm_id == arm_id]) for arm_id in range(num_arms)) * 3 * num_steps
-            steps_per_episode = 100
+            policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
+            steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
 
             for i in tqdm(range(steps_per_episode)):
                 rr.set_time_sequence("frame_id", unique_frame_id) # globally unique frame id

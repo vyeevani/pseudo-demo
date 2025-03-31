@@ -14,11 +14,17 @@ class RobotState:
     joint_angle: np.ndarray
     grasped_object_id: Optional[int] = None
 
-    def __init__(self, arm_pose: np.ndarray, joint_angle: Optional[np.ndarray] = None):
-        self.gripper_pose = np.eye(4)
+    def __init__(
+            self, 
+            arm_pose: np.ndarray, 
+            joint_angle: Optional[np.ndarray] = None,
+            gripper_pose: Optional[np.ndarray] = None,
+            grasped_object_id: Optional[int] = None
+        ):
+        self.gripper_pose = gripper_pose if gripper_pose is not None else np.eye(4)
         self.arm_pose = arm_pose
         self.joint_angle = joint_angle if joint_angle is not None else np.array([])
-        self.grasped_object_id = None
+        self.grasped_object_id = grasped_object_id
 
 def body_nodes_from_model(model: mujoco.MjModel, asset_path: str, mesh_extension: str):
     body_to_geom_nodes = {}
