@@ -3,7 +3,6 @@ import mujoco
 import pyrender
 import trimesh
 from scipy.spatial.transform import Rotation
-from robot_descriptions import widow_mj_description
 from dataclasses import dataclass
 from typing import Dict, Optional, List
 
