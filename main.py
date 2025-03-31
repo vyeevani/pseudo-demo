@@ -3,6 +3,7 @@ import pyrender
 import trimesh
 import rerun as rr
 from tqdm import tqdm
+from copy import deepcopy
 
 from agent.policy import Policy, GraspTarget
 from sim.environment import Environment
@@ -22,7 +23,7 @@ def make_humanoid(scene: pyrender.Scene):
     renderer = humanoid_renderer(scene)
     transform = np.eye(4)
     transform[:3, 3] = np.array([0, 0, -1.15])
-    eef_forward_vector = np.array([0, 0, -1])
+    eef_forward_vector = np.array([0, 1, 0])
     return controller, renderer, transform, eef_forward_vector
 
 def make_widowx(scene: pyrender.Scene):
@@ -35,7 +36,7 @@ def make_widowx(scene: pyrender.Scene):
 if __name__ == "__main__":
     num_examples = 1
     num_cameras = 4
-    num_objects = 3
+    num_objects = 1
     num_humanoid_demos = 1
     num_widowx_demos = 1
     num_arms = 1
@@ -48,6 +49,7 @@ if __name__ == "__main__":
     for example in range(num_examples):
         object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
+        object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
 
         # Initialize camera states once to retain positions between demos
         camera_states = [Camera() for _ in range(num_cameras)]
@@ -103,7 +105,8 @@ if __name__ == "__main__":
                     )
                 )
 
-            object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
+            # object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
+            object_states = deepcopy(object_states)
             env = Environment(camera_states=camera_states, object_states=object_states, robot_states=robot_states, finished=False)
             num_steps = 25
             policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, grasps, env, num_steps=num_steps)
