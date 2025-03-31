@@ -2,6 +2,8 @@ import rerun as rr
 import polars as pl
 import numpy as np
 from PIL import Image
+from dataclasses import dataclass
+from typing import List
 
 def make_image(df, entity, row):
     image_bytes = bytes(df[row][f"{entity}:ImageBuffer"][0][0])
@@ -11,9 +13,23 @@ def make_image(df, entity, row):
         mode = "F"
     elif image_format.color_model:
         mode = str(image_format.color_model)
+    else: 
+        mode = "L"
     image_buffer = np.frombuffer(image_bytes, image_format.channel_datatype.to_np_dtype())
     image = Image.frombuffer(mode, (image_format.width, image_format.height), image_buffer)
     return image
+
+@dataclass
+class Annotation:
+    id: int
+    label: str
+
+def make_annotation_context(df, entity, row) -> List[Annotation]:
+    annotations = []
+    for annotation in df[row][f"{entity}:AnnotationContext"][0][0]:
+        annotation = annotation["class_description"]["info"]
+        annotations.append(Annotation(id=annotation["id"], label=annotation["label"]))
+    return annotations
 
 def make_transform(df, entity, row):
     rotation = np.array(df[row][f"{entity}:TransformMat3x3"][0][0]).reshape(3, 3)
@@ -50,15 +66,25 @@ def make_rr_dataset(path):
     return df
 
 df = make_rr_dataset("dataset.rrd")
-print(df.columns)
+for col in df.columns:
+    print(col)
+
+image = make_image(df, "/world/0/seg", 0)
+print(make_annotation_context(df, "/world/0/seg", 0))
 
 import matplotlib.pyplot as plt
 
-image = make_image(df, "/world/0/mask", 0)
-print(image)
 plt.imshow(np.array(image))
 plt.axis('off')
 plt.show()
+
+# import matplotlib.pyplot as plt
+
+# image = make_image(df, "/world/0/mask", 0)
+# print(image)
+# plt.imshow(np.array(image))
+# plt.axis('off')
+# plt.show()
 # print(np.array(make_scalars(df, "/world/arm_0/joint_angle", 0)))
 # print(get_meta_episode(df, 0))
 # print(get_episode(get_meta_episode(df, 0), 0))

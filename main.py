@@ -41,9 +41,9 @@ if __name__ == "__main__":
     num_widowx_demos = 0
     num_arms = 1
 
-    rr.init("Rigid Manipulation Demo", spawn=True)
-    # rr.init("Rigid Manipulation Demo")
-    # rr.save("dataset.rrd")
+    # rr.init("Rigid Manipulation Demo", spawn=True)
+    rr.init("Rigid Manipulation Demo")
+    rr.save("dataset.rrd")
     unique_frame_id = 0
 
     for example in range(num_examples):
