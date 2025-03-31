@@ -136,4 +136,13 @@ if __name__ == "__main__":
                     ))
                     rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
                     rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
-                    # rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
+                    rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
+                    rr.log(
+                        f"world/{camera_id}/seg",
+                        rr.SegmentationImage(camera_data['seg']),
+                        rr.AnnotationContext([
+                            (0, "background", (0, 0, 0)), 
+                            (1, "arm", (255, 0, 0)), 
+                            (2, "object", (0, 255, 0))
+                        ])
+                    )
