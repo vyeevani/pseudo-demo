@@ -59,6 +59,11 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str, mesh_extension
             sphere = trimesh.creation.icosphere(radius=sphere_radius)
             pyrender_mesh = pyrender.Mesh.from_trimesh(sphere)
             mesh_node = pyrender.Node(mesh=pyrender_mesh)
+        elif geom.type == mujoco.mjtGeom.mjGEOM_BOX:
+            box_size = geom.size
+            box = trimesh.creation.box(extents=2 * box_size)
+            pyrender_mesh = pyrender.Mesh.from_trimesh(box)
+            mesh_node = pyrender.Node(mesh=pyrender_mesh)
         else:
             continue
 

@@ -35,10 +35,10 @@ def make_widowx(scene: pyrender.Scene):
     
 if __name__ == "__main__":
     num_examples = 1
-    num_cameras = 4
+    num_cameras = 1
     num_objects = 1
     num_humanoid_demos = 1
-    num_widowx_demos = 0
+    num_widowx_demos = 1
     num_arms = 1
 
     # rr.init("Rigid Manipulation Demo", spawn=True)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
             env = Environment(camera_states=camera_states, object_states=deepcopy(object_states), robot_states=robot_states, finished=False)
             num_steps = 25
-            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
+            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras, image_width=32, image_height=32)
             policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
             steps_per_episode = 5
@@ -122,7 +122,7 @@ if __name__ == "__main__":
                     rr.log(f"world/arm_{arm_id}/joint_angle", rr.Scalar(robot_state.joint_angle.astype(np.float32)))
                 for camera_id, camera_data in enumerate(observations):
                     rr.log(
-                        f"world/{camera_id}",
+                        f"world/camera_{camera_id}",
                         rr.Pinhole(
                             image_from_camera=camera_data['camera_intrinsics'],
                             width=camera_data['color'].shape[1],
@@ -130,15 +130,15 @@ if __name__ == "__main__":
                             camera_xyz=rr.ViewCoordinates.RUB,
                         ),
                     )
-                    rr.log(f"world/{camera_id}", rr.Transform3D(
+                    rr.log(f"world/camera_{camera_id}", rr.Transform3D(
                         mat3x3=camera_data['camera_pose'][:3, :3],
                         translation=camera_data['camera_pose'][:3, 3],
                     ))
-                    rr.log(f"world/{camera_id}/color", rr.Image(camera_data['color']))
-                    rr.log(f"world/{camera_id}/depth", rr.DepthImage(camera_data['depth']))
-                    rr.log(f"world/{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
+                    rr.log(f"world/camera_{camera_id}/color", rr.Image(camera_data['color']))
+                    rr.log(f"world/camera_{camera_id}/depth", rr.DepthImage(camera_data['depth']))
+                    rr.log(f"world/camera_{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
                     rr.log(
-                        f"world/{camera_id}/seg",
+                        f"world/camera_{camera_id}/seg",
                         rr.SegmentationImage(camera_data['seg']),
                         rr.AnnotationContext([
                             (0, "background", (0, 0, 0)), 
