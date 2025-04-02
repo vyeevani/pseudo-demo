@@ -2,18 +2,21 @@ from agent.robot import ArmController, ArmRenderer
 import mujoco
 import pyrender
 import numpy as np
+import os
 
 def smplh_controller():
-    model = mujoco.MjModel.from_xml_path("agent/smplh/smplh.xml")
+    file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
+    model = mujoco.MjModel.from_xml_path(file_path)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmController(model, data, "lh_palm", [])
+    return ArmController(model, data, "L_Wrist", [])
 
 def smplh_renderer(scene: pyrender.Scene):
-    model = mujoco.MjModel.from_xml_path("agent/smplh/smplh.xml")
+    file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
+    model = mujoco.MjModel.from_xml_path(file_path)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmRenderer(scene, model, data, "lh_palm", asset_path="agent/smplh/assets", mesh_extension="obj")
+    return ArmRenderer(scene, model, data, "L_Wrist", asset_path=os.path.join(os.path.dirname(__file__), "assets"), mesh_extension="obj")
 
 if __name__ == "__main__":
     scene = pyrender.Scene()

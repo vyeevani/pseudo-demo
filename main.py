@@ -14,6 +14,7 @@ from sim.scene import default_scene
 from sim.renderer import Renderer
 from agent.widowx import widowx_controller, widowx_renderer
 from agent.humanoid import humanoid_controller, humanoid_renderer
+from agent.smplh import smplh_controller, smplh_renderer
 
 import utils.spatial as spatial_utils
 import utils.trimesh as trimesh_utils
@@ -26,6 +27,13 @@ def make_humanoid(scene: pyrender.Scene):
     eef_forward_vector = np.array([0, 1, 0])
     return controller, renderer, transform, eef_forward_vector
 
+def make_smplh(scene: pyrender.Scene):
+    controller = smplh_controller()
+    renderer = smplh_renderer(scene)
+    transform = np.eye(4)
+    eef_forward_vector = np.array([0, -1, 0])
+    return controller, renderer, transform, eef_forward_vector
+
 def make_widowx(scene: pyrender.Scene):
     controller = widowx_controller()
     renderer = widowx_renderer(scene)
@@ -35,15 +43,15 @@ def make_widowx(scene: pyrender.Scene):
     
 if __name__ == "__main__":
     num_examples = 1
-    num_cameras = 1
+    num_cameras = 4
     num_objects = 1
     num_humanoid_demos = 1
-    num_widowx_demos = 1
+    num_widowx_demos = 0
     num_arms = 1
 
-    # rr.init("Rigid Manipulation Demo", spawn=True)
-    rr.init("Rigid Manipulation Demo")
-    rr.save("dataset.rrd")
+    rr.init("Rigid Manipulation Demo", spawn=True)
+    # rr.init("Rigid Manipulation Demo")
+    # rr.save("dataset.rrd")
     unique_frame_id = 0
 
     for example in range(num_examples):
@@ -66,7 +74,8 @@ if __name__ == "__main__":
             # Create arm controllers for initialization
             scene = default_scene()
             if demo < num_humanoid_demos:
-                arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
+                # arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
+                arm_controllers = {arm_id: make_smplh(scene) for arm_id in range(num_arms)}
             else:
                 arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
 
@@ -97,10 +106,10 @@ if __name__ == "__main__":
 
             env = Environment(camera_states=camera_states, object_states=deepcopy(object_states), robot_states=robot_states, finished=False)
             num_steps = 25
-            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras, image_width=32, image_height=32)
+            # renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras, image_width=32, image_height=32)
+            renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
             policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
-            steps_per_episode = 5
 
             for i in tqdm(range(steps_per_episode)):
                 rr.set_time_sequence("frame_id", unique_frame_id) # globally unique frame id
