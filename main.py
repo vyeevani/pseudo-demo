@@ -31,7 +31,7 @@ def make_smplh(scene: pyrender.Scene):
     controller = smplh_controller()
     renderer = smplh_renderer(scene)
     transform = np.eye(4)
-    eef_forward_vector = np.array([0, -1, 0])
+    eef_forward_vector = np.array([0, 1, 0])
     return controller, renderer, transform, eef_forward_vector
 
 def make_widowx(scene: pyrender.Scene):

@@ -180,7 +180,7 @@ class ArmController:
     
 
 @dataclass
-class ArmRenderer:
+class MujocoRenderer:
     """
     Renders a WidowX arm.
     """

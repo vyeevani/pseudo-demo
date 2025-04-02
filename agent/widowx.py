@@ -1,4 +1,4 @@
-from agent.robot import ArmController, ArmRenderer
+from agent.robot import ArmController, MujocoRenderer
 import mujoco
 import pyrender
 from robot_descriptions import widow_mj_description
@@ -14,7 +14,7 @@ def widowx_renderer(scene: pyrender.Scene):
     model = mujoco.MjModel.from_xml_path(widow_mj_description.MJCF_PATH)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmRenderer(scene, model, data, "wx250s/gripper_link", asset_path=widow_mj_description.PACKAGE_PATH + "/assets", mesh_extension="stl")
+    return MujocoRenderer(scene, model, data, "wx250s/gripper_link", asset_path=widow_mj_description.PACKAGE_PATH + "/assets", mesh_extension="stl")
 
 if __name__ == "__main__":
     scene = pyrender.Scene()
