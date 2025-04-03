@@ -13,7 +13,7 @@ def smplh_controller():
     model = mujoco.MjModel.from_xml_path(file_path)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return ArmController(model, data, "L_Wrist", [])
+    return ArmController(model, data, "R_Wrist", ["R_Index1", "R_Thumb1"])
 
 # def smplh_renderer(scene: pyrender.Scene):
 #     file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")

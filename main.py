@@ -30,7 +30,9 @@ def make_humanoid(scene: pyrender.Scene):
 def make_smplh(scene: pyrender.Scene):
     controller = smplh_controller()
     renderer = smplh_renderer(scene)
-    transform = np.eye(4)
+    # transform = np.eye(4)
+    rotation_quat = np.array([0, 0, 0.7071, 0.7071])
+    transform = trimesh.transformations.quaternion_matrix(rotation_quat)
     eef_forward_vector = np.array([0, 1, 0])
     return controller, renderer, transform, eef_forward_vector
 
@@ -88,7 +90,8 @@ if __name__ == "__main__":
                 )
                 desired_forward = -arm_translation / np.linalg.norm(arm_translation)
                 arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
-                arm_transform[:3, :3] = arm_rotation
+
+                arm_transform[:3, :3] = arm_rotation @ arm_transform[:3, :3]
                 arm_transform[:3, 3] += arm_translation
                 
                 initial_eef_pose = arm_transform @ controller.pose
