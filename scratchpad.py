@@ -64,9 +64,15 @@ SMPLH_BONE_ORDER_NAMES = [
 ]
 
 def smplh_pose_from_mujoco(model: mujoco.MjModel, data: mujoco.MjData):
-    pose = np.zeros((len(SMPLH_BONE_ORDER_NAMES), 3))
+    # pose = np.zeros((len(SMPLH_BONE_ORDER_NAMES), 3))
+    pose = [0] # for pelvis
     for i, name in enumerate(SMPLH_BONE_ORDER_NAMES):
-        pose[i] = data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)]
+        body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        joint_ids = [j for j in range(model.njnt) if model.jnt_bodyid[j] == body_id]
+        for joint_id in joint_ids:
+            pose.append(data.qpos[joint_id])
+            print(name, data.qpos[joint_id])
+    pose = np.array(pose)
     return pose
 
 def smplh_pose_to_mesh(pose: np.ndarray):
@@ -82,6 +88,7 @@ def smplh_pose_to_mesh(pose: np.ndarray):
         body_pose=body_pose, 
         left_hand_pose=left_hand_pose, 
         right_hand_pose=right_hand_pose
+        
     )
     vertices = output.vertices.detach().cpu().numpy().squeeze()
     faces = mano_model.faces
@@ -111,13 +118,18 @@ data = mujoco.MjData(model)
 
 print(data.qpos[:model.nq])
 controller = smplh_controller()
-qpos, arm_pose = controller(controller.pose, 0.0)
+translate = np.eye(4)
+translate[:3, 3] = np.array([0, 0, 1])
+print(controller.pose)
+print(translate @ controller.pose)
+qpos, arm_pose = controller(translate @ controller.pose, 0.0)
 data.qpos[:model.nq] = qpos
 print(data.qpos[:model.nq])
 mujoco.mj_forward(model, data)
 
 pose = smplh_pose_from_mujoco(model, data)
-# print(pose)
+print(pose)
+print(pose.shape)
 mesh = smplh_pose_to_mesh(pose)
 render_smplh_mesh(mesh)
 
