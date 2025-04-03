@@ -30,8 +30,10 @@ def make_humanoid(scene: pyrender.Scene):
 def make_smplh(scene: pyrender.Scene):
     controller = smplh_controller()
     renderer = smplh_renderer(scene)
-    # transform = np.eye(4)
-    rotation_quat = np.array([0, 0, 0.7071, 0.7071])
+    rotation_quat = trimesh.transformations.quaternion_multiply(
+        trimesh.transformations.quaternion_about_axis(3 * np.pi/2, [0, 0, 1]),
+        trimesh.transformations.quaternion_about_axis(np.pi/2, [1, 0, 0])
+    )
     transform = trimesh.transformations.quaternion_matrix(rotation_quat)
     eef_forward_vector = np.array([0, 1, 0])
     return controller, renderer, transform, eef_forward_vector
@@ -84,15 +86,17 @@ if __name__ == "__main__":
             object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
             for arm_id in range(num_arms):                
                 controller, renderer, arm_transform, eef_forward_vector = arm_controllers[arm_id]
-
-                arm_translation = spatial_utils.spherical_to_cartesian(
-                    *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
+                
+                random_look_at_translation = spatial_utils.spherical_to_cartesian(
+                    *spatial_utils.random_spherical_coordinates(min_dist=-0.5, max_dist=-0.65, randomize_elevation=False)
                 )
-                desired_forward = -arm_translation / np.linalg.norm(arm_translation)
-                arm_rotation = spatial_utils.look_at_rotation(default_forward.copy(), desired_forward.copy(), default_up.copy(), desired_up.copy())
-
-                arm_transform[:3, :3] = arm_rotation @ arm_transform[:3, :3]
-                arm_transform[:3, 3] += arm_translation
+                random_look_at_forward = random_look_at_translation / np.linalg.norm(random_look_at_translation)
+                random_look_at_rotation = spatial_utils.look_at_rotation(default_forward.copy(), random_look_at_forward.copy(), default_up.copy(), desired_up.copy())
+                random_look_at = np.eye(4)
+                random_look_at[:3, :3] = random_look_at_rotation
+                random_look_at[:3, 3] = random_look_at_translation
+                
+                arm_transform = random_look_at @ arm_transform
                 
                 initial_eef_pose = arm_transform @ controller.pose
                 object_point, object_face_normal = object_point_transforms[0]
