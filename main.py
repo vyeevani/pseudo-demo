@@ -41,16 +41,17 @@ def make_smplh(scene: pyrender.Scene):
 def make_widowx(scene: pyrender.Scene):
     controller = widowx_controller()
     renderer = widowx_renderer(scene)
-    transform = np.eye(4)
+    rotation_quat = trimesh.transformations.quaternion_about_axis(np.pi, [0, 0, 1])
+    transform = trimesh.transformations.quaternion_matrix(rotation_quat)
     eef_forward_vector = np.array([-1, 0, 0])
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
     num_examples = 1
     num_cameras = 4
-    num_objects = 1
+    num_objects = 4
     num_humanoid_demos = 1
-    num_widowx_demos = 0
+    num_widowx_demos = 1
     num_arms = 1
 
     rr.init("Rigid Manipulation Demo", spawn=True)
@@ -88,14 +89,13 @@ if __name__ == "__main__":
                 controller, renderer, arm_transform, eef_forward_vector = arm_controllers[arm_id]
                 
                 random_look_at_translation = spatial_utils.spherical_to_cartesian(
-                    *spatial_utils.random_spherical_coordinates(min_dist=-0.5, max_dist=-0.65, randomize_elevation=False)
+                    *spatial_utils.random_spherical_coordinates(min_dist=-0.25, max_dist=-0.35, randomize_elevation=False)
                 )
                 random_look_at_forward = random_look_at_translation / np.linalg.norm(random_look_at_translation)
                 random_look_at_rotation = spatial_utils.look_at_rotation(default_forward.copy(), random_look_at_forward.copy(), default_up.copy(), desired_up.copy())
                 random_look_at = np.eye(4)
                 random_look_at[:3, :3] = random_look_at_rotation
                 random_look_at[:3, 3] = random_look_at_translation
-                
                 arm_transform = random_look_at @ arm_transform
                 
                 initial_eef_pose = arm_transform @ controller.pose
@@ -103,8 +103,6 @@ if __name__ == "__main__":
                 object_point_transform = trimesh.geometry.align_vectors(eef_forward_vector, object_face_normal)
                 object_point_transform[:3, 3] = object_point
 
-                # initial_joint_angles, _ = controller(initial_eef_pose, 1.0)
-                # robot_states[arm_id] = RobotState(arm_transform, initial_joint_angles, initial_eef_pose, grasped_object_id=None)
                 robot_states[arm_id] = RobotState(arm_transform)
 
                 waypoints.append((arm_id, AbsoluteWaypoint(object_id=None, pose=initial_eef_pose)))
@@ -130,7 +128,7 @@ if __name__ == "__main__":
                         f"world/arm_{arm_id}/pose",
                         rr.Transform3D(
                             mat3x3=robot_state.gripper_pose[:3, :3],
-                            translation=robot_state.gripper_pose[:3, 3],
+                            translation=robot_state.gripper_pose[:3, 3]
                         ),
                     )
                     rr.log(f"world/arm_{arm_id}/object_id", rr.Scalar(robot_state.grasped_object_id))

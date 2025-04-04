@@ -92,7 +92,7 @@ class ArmController:
     eef_id: int
     gripper_joint_ids: Optional[List[int]]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: Optional[List[str]] = None):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: Optional[List[str]] = None, static_body_names: Optional[List[str]] = None):
         self.model = model
         self.data = data
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
@@ -100,6 +100,14 @@ class ArmController:
             self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
         else:
             self.gripper_joint_ids = None
+        if static_body_names:
+            self.static_joint_ids = []
+            for body_name in static_body_names:
+                body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+                joint_ids = [j for j in range(model.njnt) if model.jnt_bodyid[j] == body_id]
+                self.static_joint_ids.extend(joint_ids)
+        else:
+            self.static_joint_ids = []
         mujoco.mj_forward(self.model, self.data)
 
     @property
@@ -167,6 +175,17 @@ class ArmController:
 
             # Compute change in joint angles using the Jacobian transpose method
             dq = learning_rate * jac.T @ error
+            
+            # dq = np.zeros_like(dq)
+            
+            dq[self.static_joint_ids] = 0
+            
+            # Apply joint limits
+            for i in range(self.model.nq):
+                if self.data.qpos[i] < self.model.jnt_range[i][0]:
+                    self.data.qpos[i] = self.model.jnt_range[i][0]
+                elif self.data.qpos[i] > self.model.jnt_range[i][1]:
+                    self.data.qpos[i] = self.model.jnt_range[i][1]
 
             # Apply joint updates
             self.data.qpos[:self.model.nq] += dq

@@ -8,20 +8,6 @@ import trimesh
 import torch
 from typing import Dict
 
-def smplh_controller():
-    file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
-    model = mujoco.MjModel.from_xml_path(file_path)
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    return ArmController(model, data, "R_Wrist", ["R_Pinky3", "R_Thumb3"])
-
-# def smplh_renderer(scene: pyrender.Scene):
-#     file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
-#     model = mujoco.MjModel.from_xml_path(file_path)
-#     data = mujoco.MjData(model)
-#     mujoco.mj_forward(model, data)
-#     return MujocoRenderer(scene, model, data, "L_Wrist", asset_path=os.path.join(os.path.dirname(__file__), "assets"), mesh_extension="obj")
-
 SMPLH_BONE_ORDER_NAMES = [
     "Pelvis",
     "L_Hip",
@@ -77,6 +63,31 @@ SMPLH_BONE_ORDER_NAMES = [
     "R_Thumb3",
 ]
 
+def smplh_controller():
+    file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
+    model = mujoco.MjModel.from_xml_path(file_path)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    static_body_names = [
+        "Pelvis",
+        "L_Hip",
+        "R_Hip",
+        "Torso",
+        "L_Knee",
+        "R_Knee",
+        "Spine",
+        "L_Ankle",
+        "R_Ankle",
+        # "Chest",
+        "L_Toe",
+        "R_Toe",
+        "Neck",
+        # "L_Thorax",
+        # "R_Thorax",
+        "Head",
+    ]
+    return ArmController(model, data, "R_Wrist", ["R_Pinky3", "R_Thumb3"], static_body_names)
+
 def smplh_pose_from_mujoco(model: mujoco.MjModel, data: mujoco.MjData):
     pose = [0]
     for i, name in enumerate(SMPLH_BONE_ORDER_NAMES):
@@ -118,18 +129,12 @@ class SMPLHRenderer:
         self.body_nodes = {0: pyrender.Node(mesh=pyrender.Mesh.from_trimesh(smplh_pose_to_mesh(np.zeros((154,)), self.mano_model)), matrix=np.eye(4))}
         self.scene.add_node(self.body_nodes[0])
     def __call__(self, matrix_pose: np.ndarray, qpos: np.ndarray):
-        print(matrix_pose)
         self.data.qpos = qpos
         mujoco.mj_forward(self.model, self.data)
         qpos = smplh_pose_from_mujoco(self.model, self.data)
         mesh = smplh_pose_to_mesh(qpos, self.mano_model)
         pyrender_mesh = pyrender.Mesh.from_trimesh(mesh)
-        # Update the mesh in the scene
         self.scene.remove_node(self.body_nodes[0])
-        # rotation_quat = np.array([0, 0, 0.7071, 0.7071])
-        # matrix = trimesh.transformations.quaternion_matrix(rotation_quat)
-        # matrix[:3, 3] = np.array([0.0022, 0.2408, -0.0286])
-        # matrix_pose = matrix_pose @ matrix
         self.body_nodes[0] = pyrender.Node(mesh=pyrender_mesh, matrix=matrix_pose)
         self.scene.add_node(self.body_nodes[0])
         
