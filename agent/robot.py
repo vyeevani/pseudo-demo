@@ -59,6 +59,11 @@ def body_nodes_from_model(model: mujoco.MjModel, asset_path: str, mesh_extension
             sphere = trimesh.creation.icosphere(radius=sphere_radius)
             pyrender_mesh = pyrender.Mesh.from_trimesh(sphere)
             mesh_node = pyrender.Node(mesh=pyrender_mesh)
+        elif geom.type == mujoco.mjtGeom.mjGEOM_BOX:
+            box_size = geom.size
+            box = trimesh.creation.box(extents=2 * box_size)
+            pyrender_mesh = pyrender.Mesh.from_trimesh(box)
+            mesh_node = pyrender.Node(mesh=pyrender_mesh)
         else:
             continue
 
@@ -87,7 +92,7 @@ class ArmController:
     eef_id: int
     gripper_joint_ids: Optional[List[int]]
     
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: Optional[List[str]] = None):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, eef_body_name: str, gripper_joint_names: Optional[List[str]] = None, static_body_names: Optional[List[str]] = None):
         self.model = model
         self.data = data
         self.eef_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, eef_body_name)
@@ -95,6 +100,14 @@ class ArmController:
             self.gripper_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in gripper_joint_names]
         else:
             self.gripper_joint_ids = None
+        if static_body_names:
+            self.static_joint_ids = []
+            for body_name in static_body_names:
+                body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+                joint_ids = [j for j in range(model.njnt) if model.jnt_bodyid[j] == body_id]
+                self.static_joint_ids.extend(joint_ids)
+        else:
+            self.static_joint_ids = []
         mujoco.mj_forward(self.model, self.data)
 
     @property
@@ -112,6 +125,27 @@ class ArmController:
             root_to_gripper_transform = np.eye(4)
             root_to_gripper_transform[:3, 3] = root_to_gripper_translation
             current_pose = root_to_gripper_transform @ current_pose
+        return current_pose
+    
+    def compute_pose(self, qpos: Optional[np.ndarray]) -> np.ndarray:
+        """
+        Returns the current end-effector pose as a 4x4 homogeneous transformation matrix.
+        """
+        original_qpos = self.data.qpos
+        self.data.qpos[:self.model.nq] = qpos
+        mujoco.mj_forward(self.model, self.data)
+        current_translation = self.data.xpos[self.eef_id]
+        current_rotation = Rotation.from_quat(self.data.xquat[self.eef_id], scalar_first=True).as_matrix()
+        current_pose = np.eye(4)
+        current_pose[:3, :3] = current_rotation
+        current_pose[:3, 3] = current_translation
+        if self.gripper_joint_ids:
+            root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
+            root_to_gripper_transform = np.eye(4)
+            root_to_gripper_transform[:3, 3] = root_to_gripper_translation
+            current_pose = root_to_gripper_transform @ current_pose
+        self.data.qpos[:self.model.nq] = original_qpos
+        mujoco.mj_forward(self.model, self.data)
         return current_pose
     
     def __call__(self, target_pose: np.ndarray, open_amount: float, hint: Optional[np.ndarray] = None):
@@ -162,9 +196,19 @@ class ArmController:
 
             # Compute change in joint angles using the Jacobian transpose method
             dq = learning_rate * jac.T @ error
+            
+            dq[self.static_joint_ids] = 0
 
             # Apply joint updates
             self.data.qpos[:self.model.nq] += dq
+            
+            # # Apply joint limits
+            # for i in range(self.model.nq):
+            #     if self.data.qpos[i] < self.model.jnt_range[i][0]:
+            #         self.data.qpos[i] = self.model.jnt_range[i][0]
+            #     elif self.data.qpos[i] > self.model.jnt_range[i][1]:
+            #         self.data.qpos[i] = self.model.jnt_range[i][1]
+                    
             mujoco.mj_forward(self.model, self.data)  # Update forward kinematics
         
         arm_pose = np.eye(4)
@@ -175,7 +219,7 @@ class ArmController:
     
 
 @dataclass
-class ArmRenderer:
+class MujocoRenderer:
     """
     Renders a WidowX arm.
     """

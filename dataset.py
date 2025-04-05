@@ -13,8 +13,11 @@ def make_image(df, entity, row):
         mode = "F"
     elif image_format.color_model:
         mode = str(image_format.color_model)
-    else: 
+    elif image_format.channel_datatype == rr.datatypes.ChannelDatatype.U8: 
         mode = "L"
+    else:
+        raise ValueError(f"Unsupported image format: {image_format}")
+    
     image_buffer = np.frombuffer(image_bytes, image_format.channel_datatype.to_np_dtype())
     image = Image.frombuffer(mode, (image_format.width, image_format.height), image_buffer)
     return image

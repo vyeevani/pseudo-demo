@@ -5,7 +5,7 @@ import numpy as np
 import pyrender
 import trimesh
 
-from agent.robot import ArmRenderer
+from agent.robot import MujocoRenderer
 from sim.environment import Environment
 
 @dataclass
@@ -16,10 +16,10 @@ class Renderer:
     camera_nodes: List[pyrender.Node]
     object_nodes: Dict[int, pyrender.Node]
     arm_nodes: List[pyrender.Node]
-    arm_renderers: Dict[int, ArmRenderer]
+    arm_renderers: Dict[int, MujocoRenderer]
     gripper_speed: float = 0.1
 
-    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], arm_renderers: Dict[int, ArmRenderer], num_cameras: int, image_width: int = 480, image_height: int = 480):
+    def __init__(self, scene: pyrender.Scene, object_meshes: List[trimesh.Trimesh], arm_renderers: Dict[int, MujocoRenderer], num_cameras: int, image_width: int = 480, image_height: int = 480):
         num_objects = len(object_meshes)
         yfov = np.pi/4.0
         fx = image_width / (2 * np.tan(yfov / 2))
@@ -74,7 +74,7 @@ class Renderer:
             self.scene.main_camera_node = camera_node
             
             # Standard color and depth rendering
-            flags = pyrender.RenderFlags.RGBA | pyrender.RenderFlags.SHADOWS_DIRECTIONAL
+            flags = pyrender.RenderFlags.SHADOWS_DIRECTIONAL
             color, depth = self.renderer.render(self.scene, flags=flags)
             mask = (depth > 0).astype(np.float32)
 
@@ -83,7 +83,7 @@ class Renderer:
             seg_node_map.update({node: np.array([0, 255, 0]) for node in self.object_nodes.values()})
             seg_color, _ = self.renderer.render(
                 self.scene,  
-                flags=pyrender.RenderFlags.SEG | pyrender.RenderFlags.RGBA,
+                flags=pyrender.RenderFlags.SEG,
                 seg_node_map=seg_node_map,
             )
             seg = np.zeros(seg_color.shape[:2], dtype=np.uint8)
