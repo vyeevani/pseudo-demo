@@ -127,6 +127,27 @@ class ArmController:
             current_pose = root_to_gripper_transform @ current_pose
         return current_pose
     
+    def compute_pose(self, qpos: Optional[np.ndarray]) -> np.ndarray:
+        """
+        Returns the current end-effector pose as a 4x4 homogeneous transformation matrix.
+        """
+        original_qpos = self.data.qpos
+        self.data.qpos[:self.model.nq] = qpos
+        mujoco.mj_forward(self.model, self.data)
+        current_translation = self.data.xpos[self.eef_id]
+        current_rotation = Rotation.from_quat(self.data.xquat[self.eef_id], scalar_first=True).as_matrix()
+        current_pose = np.eye(4)
+        current_pose[:3, :3] = current_rotation
+        current_pose[:3, 3] = current_translation
+        if self.gripper_joint_ids:
+            root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
+            root_to_gripper_transform = np.eye(4)
+            root_to_gripper_transform[:3, 3] = root_to_gripper_translation
+            current_pose = root_to_gripper_transform @ current_pose
+        self.data.qpos[:self.model.nq] = original_qpos
+        mujoco.mj_forward(self.model, self.data)
+        return current_pose
+    
     def __call__(self, target_pose: np.ndarray, open_amount: float, hint: Optional[np.ndarray] = None):
         if self.gripper_joint_ids:
             root_to_gripper_translation = np.mean([self.data.xpos[self.model.jnt_bodyid[child_joint_id]] - self.data.xpos[self.eef_id] for child_joint_id in self.gripper_joint_ids], axis=0)
@@ -176,19 +197,18 @@ class ArmController:
             # Compute change in joint angles using the Jacobian transpose method
             dq = learning_rate * jac.T @ error
             
-            # dq = np.zeros_like(dq)
-            
             dq[self.static_joint_ids] = 0
-            
-            # Apply joint limits
-            for i in range(self.model.nq):
-                if self.data.qpos[i] < self.model.jnt_range[i][0]:
-                    self.data.qpos[i] = self.model.jnt_range[i][0]
-                elif self.data.qpos[i] > self.model.jnt_range[i][1]:
-                    self.data.qpos[i] = self.model.jnt_range[i][1]
 
             # Apply joint updates
             self.data.qpos[:self.model.nq] += dq
+            
+            # # Apply joint limits
+            # for i in range(self.model.nq):
+            #     if self.data.qpos[i] < self.model.jnt_range[i][0]:
+            #         self.data.qpos[i] = self.model.jnt_range[i][0]
+            #     elif self.data.qpos[i] > self.model.jnt_range[i][1]:
+            #         self.data.qpos[i] = self.model.jnt_range[i][1]
+                    
             mujoco.mj_forward(self.model, self.data)  # Update forward kinematics
         
         arm_pose = np.eye(4)

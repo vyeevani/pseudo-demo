@@ -5,7 +5,7 @@ import rerun as rr
 from tqdm import tqdm
 from copy import deepcopy
 
-from agent.policy import Policy, AbsoluteWaypoint, ObjectCentricWaypoint
+from agent.policy import PosePolicy, JointPolicy, AbsoluteWaypoint, ObjectCentricWaypoint
 from sim.environment import Environment
 from agent.robot import RobotState
 from sim.camera import Camera
@@ -49,7 +49,7 @@ def make_widowx(scene: pyrender.Scene):
 if __name__ == "__main__":
     num_examples = 1
     num_cameras = 4
-    num_objects = 4
+    num_objects = 1
     num_humanoid_demos = 1
     num_widowx_demos = 1
     num_arms = 1
@@ -113,7 +113,7 @@ if __name__ == "__main__":
             num_steps = 25
             # renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras, image_width=32, image_height=32)
             renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
-            policy = Policy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
+            policy = PosePolicy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
 
             for i in tqdm(range(steps_per_episode)):

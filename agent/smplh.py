@@ -78,12 +78,12 @@ def smplh_controller():
         "Spine",
         "L_Ankle",
         "R_Ankle",
-        # "Chest",
+        "Chest",
         "L_Toe",
         "R_Toe",
         "Neck",
-        # "L_Thorax",
-        # "R_Thorax",
+        "L_Thorax",
+        "R_Thorax",
         "Head",
     ]
     return ArmController(model, data, "R_Wrist", ["R_Pinky3", "R_Thumb3"], static_body_names)
@@ -138,13 +138,18 @@ class SMPLHRenderer:
         self.body_nodes[0] = pyrender.Node(mesh=pyrender_mesh, matrix=matrix_pose)
         self.scene.add_node(self.body_nodes[0])
         
+# def smplh_renderer(scene: pyrender.Scene):
+#     file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
+#     model = mujoco.MjModel.from_xml_path(file_path)
+#     data = mujoco.MjData(model)
+#     mujoco.mj_forward(model, data)
+#     return SMPLHRenderer(scene, model, data)
+
 def smplh_renderer(scene: pyrender.Scene):
-    file_path = os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml")
-    model = mujoco.MjModel.from_xml_path(file_path)
+    model = mujoco.MjModel.from_xml_path(os.path.join(os.path.dirname(__file__), "smplh", "smplh.xml"))
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    return SMPLHRenderer(scene, model, data)
-
+    return MujocoRenderer(scene, model, data, "R_Wrist", asset_path=os.path.join(os.path.dirname(__file__), "smplh", "models"), mesh_extension="stl")
 
 if __name__ == "__main__":
     scene = pyrender.Scene()
