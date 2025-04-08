@@ -15,7 +15,7 @@ from sim.renderer import Renderer
 from agent.widowx import widowx_controller, widowx_renderer
 from agent.humanoid import humanoid_controller, humanoid_renderer
 from agent.smplh import smplh_controller, smplh_renderer
-
+from agent.unvisualized import unvisualized_controller, unvisualized_renderer
 import utils.spatial as spatial_utils
 import utils.trimesh as trimesh_utils
 
@@ -45,12 +45,19 @@ def make_widowx(scene: pyrender.Scene):
     transform = trimesh.transformations.quaternion_matrix(rotation_quat)
     eef_forward_vector = np.array([-1, 0, 0])
     return controller, renderer, transform, eef_forward_vector
+
+def make_unvisualized(scene: pyrender):
+    controller = unvisualized_controller()
+    renderer = unvisualized_renderer()
+    transform = np.eye(4)
+    eef_forward_vector = np.array([0, 1, 0])
+    return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
-    num_examples = 1
+    num_examples = 2
     num_cameras = 4
     num_objects = 1
-    num_humanoid_demos = 1
+    num_humanoid_demos = 0
     num_widowx_demos = 1
     num_arms = 1
 
@@ -82,7 +89,8 @@ if __name__ == "__main__":
                 # arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
                 arm_controllers = {arm_id: make_smplh(scene) for arm_id in range(num_arms)}
             else:
-                arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
+                # arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
+                arm_controllers = {arm_id: make_unvisualized(scene) for arm_id in range(num_arms)}
 
             object_states = {i: Object(bounding_box_radius=0.1) for i in range(num_objects)}
             for arm_id in range(num_arms):                
@@ -125,7 +133,14 @@ if __name__ == "__main__":
                 observations = renderer(env)
                 for arm_id, robot_state in env.robot_states.items():
                     rr.log(
-                        f"world/arm_{arm_id}/pose",
+                        f"world/arm_{arm_id}/base_pose",
+                        rr.Transform3D(
+                            mat3x3=robot_state.arm_pose[:3, :3],
+                            translation=robot_state.arm_pose[:3, 3]
+                        ),
+                    )
+                    rr.log(
+                        f"world/arm_{arm_id}/eef_pose",
                         rr.Transform3D(
                             mat3x3=robot_state.gripper_pose[:3, :3],
                             translation=robot_state.gripper_pose[:3, 3]
