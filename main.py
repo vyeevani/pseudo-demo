@@ -54,9 +54,9 @@ def make_unvisualized(scene: pyrender):
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
-    num_examples = 2
+    num_examples = 1
     num_cameras = 4
-    num_objects = 1
+    num_objects = 2
     num_humanoid_demos = 0
     num_widowx_demos = 1
     num_arms = 1
@@ -114,8 +114,8 @@ if __name__ == "__main__":
                 robot_states[arm_id] = RobotState(arm_transform)
 
                 waypoints.append((arm_id, AbsoluteWaypoint(object_id=None, pose=initial_eef_pose)))
-                waypoints.append((arm_id, ObjectCentricWaypoint(object_id=0, pose=object_point_transform)))
-                waypoints.append((arm_id, AbsoluteWaypoint(object_id=0, pose=initial_eef_pose)))
+                waypoints.append((arm_id, ObjectCentricWaypoint(object_id=arm_id, pose=object_point_transform)))
+                waypoints.append((arm_id, AbsoluteWaypoint(object_id=arm_id, pose=initial_eef_pose)))
 
             env = Environment(camera_states=camera_states, object_states=deepcopy(object_states), robot_states=robot_states, finished=False)
             num_steps = 25
