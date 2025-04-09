@@ -54,17 +54,19 @@ def make_unvisualized(scene: pyrender):
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
-    num_examples = 1
+    num_examples = 4
     num_cameras = 4
-    num_objects = 2
-    num_humanoid_demos = 0
-    num_widowx_demos = 1
+    num_objects = 1
+    # num_humanoid_demos = 0
+    # num_widowx_demos = 1
+    num_demo_episodes = 1
+    num_execution_episodes = 1
     num_arms = 1
 
-    rr.init("Rigid Manipulation Demo", spawn=True)
-    # rr.init("Rigid Manipulation Demo")
-    # rr.save("dataset.rrd")
-    unique_frame_id = 0
+    # rr.init("Rigid Manipulation Demo", spawn=True)
+    rr.init("Rigid Manipulation Demo")
+    rr.save("dataset.rrd")
+    dataset_frame_id = 0
 
     for example in range(num_examples):
         object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
@@ -72,8 +74,9 @@ if __name__ == "__main__":
         camera_states = [Camera() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)
 
-        for demo in range(num_humanoid_demos + num_widowx_demos):
+        for demo in range(num_demo_episodes + num_execution_episodes):
             rr.set_time_sequence("episode_number", demo)
+            meta_episode_frame_number = 0
             arm_transforms = {}
 
             default_forward = np.array([1, 0, 0])
@@ -85,9 +88,10 @@ if __name__ == "__main__":
 
             # Create arm controllers for initialization
             scene = default_scene()
-            if demo < num_humanoid_demos:
+            if demo < num_demo_episodes:
                 # arm_controllers = {arm_id: make_humanoid(scene) for arm_id in range(num_arms)}
-                arm_controllers = {arm_id: make_smplh(scene) for arm_id in range(num_arms)}
+                # arm_controllers = {arm_id: make_smplh(scene) for arm_id in range(num_arms)}
+                arm_controllers = {arm_id: make_unvisualized(scene) for arm_id in range(num_arms)}
             else:
                 # arm_controllers = {arm_id: make_widowx(scene) for arm_id in range(num_arms)}
                 arm_controllers = {arm_id: make_unvisualized(scene) for arm_id in range(num_arms)}
@@ -125,9 +129,11 @@ if __name__ == "__main__":
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
 
             for i in tqdm(range(steps_per_episode)):
-                rr.set_time_sequence("frame_id", unique_frame_id) # globally unique frame id
-                unique_frame_id += 1
-                rr.set_time_sequence("frame_number", i) # frame number within episode
+                rr.set_time_sequence("frame_id", dataset_frame_id) # globally unique frame id
+                dataset_frame_id += 1
+                rr.set_time_sequence("meta_episode_frame_number", meta_episode_frame_number)
+                meta_episode_frame_number += 1
+                rr.set_time_sequence("episode_frame_number", i) # frame number within episode
                 action = policy(env)
                 env = env(action)
                 observations = renderer(env)
