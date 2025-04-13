@@ -12,6 +12,7 @@ from sim.camera import Camera
 from sim.object import Object
 from sim.scene import default_scene
 from sim.renderer import Renderer
+from object.shapenet import ShapeNet, SHAPENET_DIRECTORY
 from agent.widowx import widowx_controller, widowx_renderer
 from agent.humanoid import humanoid_controller, humanoid_renderer
 from agent.smplh import smplh_controller, smplh_renderer
@@ -62,14 +63,16 @@ if __name__ == "__main__":
     num_demo_episodes = 1
     num_execution_episodes = 1
     num_arms = 1
+    shapenet = ShapeNet(SHAPENET_DIRECTORY)
 
-    # rr.init("Rigid Manipulation Demo", spawn=True)
-    rr.init("Rigid Manipulation Demo")
-    rr.save("dataset.rrd")
+    rr.init("Rigid Manipulation Demo", spawn=True)
+    # rr.init("Rigid Manipulation Demo")
+    # rr.save("dataset.rrd")
     dataset_frame_id = 0
 
     for example in range(num_examples):
-        object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
+        # object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
+        object_meshes = [shapenet.get_random_mesh() for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
         camera_states = [Camera() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)
