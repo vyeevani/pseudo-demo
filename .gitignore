@@ -103,3 +103,4 @@ outputs/
 temp/ 
 
 *.rrd
+*.parquet

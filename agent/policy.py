@@ -86,7 +86,7 @@ class PosePolicy(WaypointPolicyBase):
                 arm_controller = arm_controllers[arm_id]
                 previous_joint_angle = None
                 
-                for pose, obj_id in tqdm(zip(poses, object_ids), total=len(poses), desc=f"Processing arm {arm_id} waypoints"):
+                for pose, obj_id in tqdm(zip(poses, object_ids), total=len(poses), desc=f"Processing arm {arm_id} waypoints", leave=False):
                     # Convert to arm frame
                     local_pose = np.linalg.inv(env.robot_states[arm_id].arm_pose) @ pose
                     open_amount = 1.0 if obj_id is None else 0.0

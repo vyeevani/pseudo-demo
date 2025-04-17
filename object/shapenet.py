@@ -11,7 +11,7 @@ class ShapeNet:
 
     def _get_all_obj_files(self):
         obj_files = []
-        for root, _, files in tqdm(os.walk(self.directory), desc="Walking through shapenet"):
+        for root, _, files in tqdm(os.walk(self.directory), desc="Walking through shapenet", leave=False):
             obj_files.extend([os.path.join(root, file) for file in files if file == 'model_normalized.obj'])
         return obj_files
 

@@ -4,6 +4,7 @@ import trimesh
 import rerun as rr
 from tqdm import tqdm
 from copy import deepcopy
+from uuid import uuid4
 
 from agent.policy import PosePolicy, JointPolicy, AbsoluteWaypoint, ObjectCentricWaypoint
 from sim.environment import Environment
@@ -55,9 +56,9 @@ def make_unvisualized(scene: pyrender):
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
-    num_examples = 4
-    num_cameras = 4
-    num_objects = 1
+    num_examples = 1000
+    num_cameras = 1
+    num_objects = 2
     # num_humanoid_demos = 0
     # num_widowx_demos = 1
     num_demo_episodes = 1
@@ -66,11 +67,21 @@ if __name__ == "__main__":
     shapenet = ShapeNet(SHAPENET_DIRECTORY)
 
     # rr.init("Rigid Manipulation Demo", spawn=True)
-    rr.init("Rigid Manipulation Demo")
-    rr.save("dataset.rrd")
     dataset_frame_id = 0
+    
+    import os
+    
+    # Create dataset directory if it doesn't exist
+    dataset_dir = "dataset_rrd"
+    if not os.path.exists(dataset_dir):
+        os.makedirs(dataset_dir)
+        print(f"Created directory: {dataset_dir}")
+    else:
+        print(f"Directory already exists: {dataset_dir}")
 
-    for example in range(num_examples):
+    for example in tqdm(range(num_examples), desc="Examples", position=0, leave=True):        
+        rr.init("Rigid Manipulation Demo", recording_id=uuid4())
+        rr.save(f"{dataset_dir}/dataset_{example}.rrd")
         # object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
         object_meshes = [shapenet.get_random_mesh() for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
@@ -125,13 +136,13 @@ if __name__ == "__main__":
                 waypoints.append((arm_id, AbsoluteWaypoint(object_id=arm_id, pose=initial_eef_pose)))
 
             env = Environment(camera_states=camera_states, object_states=deepcopy(object_states), robot_states=robot_states, finished=False)
-            num_steps = 25
+            num_steps = 10
             # renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras, image_width=32, image_height=32)
             renderer = Renderer(scene, object_meshes, {arm_id: renderer for arm_id, (_, renderer, _, _) in arm_controllers.items()}, num_cameras)
             policy = PosePolicy({arm_id: controller for arm_id, (controller, _, _, _) in arm_controllers.items()}, waypoints, env, num_steps=num_steps)
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
 
-            for i in tqdm(range(steps_per_episode)):
+            for i in tqdm(range(steps_per_episode), desc=f"Example {example}, Episode {demo}", position=1, leave=False):
                 rr.set_time_sequence("frame_id", dataset_frame_id) # globally unique frame id
                 dataset_frame_id += 1
                 rr.set_time_sequence("meta_episode_frame_number", meta_episode_frame_number)
