@@ -76,20 +76,22 @@ if __name__ == "__main__":
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
         print(f"Created directory: {dataset_dir}")
+        starting_example = 0
     else:
         print(f"Directory already exists: {dataset_dir}")
+        # overwrite the last 3 examples
+        starting_example = max(0, len(os.listdir(dataset_dir)) - 3)
 
-    for example in tqdm(range(num_examples), desc="Examples", position=0, leave=True):        
-        rr.init("Rigid Manipulation Demo", recording_id=uuid4())
-        rr.save(f"{dataset_dir}/dataset_{example}.rrd")
-        # object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
+    for example in tqdm(range(starting_example, num_examples), desc="Examples", position=0, leave=True):        
+        recording = rr.RecordingStream("Rigid Manipulation Demo", recording_id=uuid4())
+        recording.save(f"{dataset_dir}/dataset_{example}.rrd")
         object_meshes = [shapenet.get_random_mesh().apply_scale(0.375) for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
         camera_states = [Camera() for _ in range(num_cameras)]
-        rr.set_time_sequence("meta_episode_number", example)
+        rr.set_time("meta_episode_number", sequence=example)
 
         for demo in range(num_demo_episodes + num_execution_episodes):
-            rr.set_time_sequence("episode_number", demo)
+            rr.set_time("episode_number", sequence=demo)
             meta_episode_frame_number = 0
             arm_transforms = {}
 
@@ -143,34 +145,34 @@ if __name__ == "__main__":
             steps_per_episode = max(len([waypoint for waypoint in waypoints if waypoint[0] == arm_id]) for arm_id in range(num_arms)) * num_steps
 
             for i in tqdm(range(steps_per_episode), desc=f"Example {example}, Episode {demo}", position=1, leave=False):
-                rr.set_time_sequence("frame_id", dataset_frame_id) # globally unique frame id
+                recording.set_time("frame_id", sequence=dataset_frame_id) # globally unique frame id
                 dataset_frame_id += 1
-                rr.set_time_sequence("meta_episode_frame_number", meta_episode_frame_number)
+                recording.set_time("meta_episode_frame_number", sequence=meta_episode_frame_number)
                 meta_episode_frame_number += 1
-                rr.set_time_sequence("episode_frame_number", i) # frame number within episode
+                recording.set_time("episode_frame_number", sequence=i) # frame number within episode
                 action = policy(env)
                 env = env(action)
                 observations = renderer(env)
                 for arm_id, robot_state in env.robot_states.items():
-                    rr.log(
+                    recording.log(
                         f"world/arm_{arm_id}/base_pose",
                         rr.Transform3D(
                             mat3x3=robot_state.arm_pose[:3, :3],
                             translation=robot_state.arm_pose[:3, 3]
                         ),
                     )
-                    rr.log(
+                    recording.log(
                         f"world/arm_{arm_id}/eef_pose",
                         rr.Transform3D(
                             mat3x3=robot_state.gripper_pose[:3, :3],
                             translation=robot_state.gripper_pose[:3, 3]
                         ),
                     )
-                    rr.log(f"world/arm_{arm_id}/object_id", rr.Scalar(robot_state.grasped_object_id))
+                    recording.log(f"world/arm_{arm_id}/object_id", rr.Scalars(robot_state.grasped_object_id))
                     # TODO: this is hacky and not great but tensor is not supported in dataframe
-                    rr.log(f"world/arm_{arm_id}/joint_angle", rr.Scalar(robot_state.joint_angle.astype(np.float32)))
+                    recording.log(f"world/arm_{arm_id}/joint_angle", rr.Scalars(robot_state.joint_angle.astype(np.float32)))
                 for camera_id, camera_data in enumerate(observations):
-                    rr.log(
+                    recording.log(
                         f"world/camera_{camera_id}",
                         rr.Pinhole(
                             image_from_camera=camera_data['camera_intrinsics'],
@@ -179,14 +181,14 @@ if __name__ == "__main__":
                             camera_xyz=rr.ViewCoordinates.RUB,
                         ),
                     )
-                    rr.log(f"world/camera_{camera_id}", rr.Transform3D(
+                    recording.log(f"world/camera_{camera_id}", rr.Transform3D(
                         mat3x3=camera_data['camera_pose'][:3, :3],
                         translation=camera_data['camera_pose'][:3, 3],
                     ))
-                    rr.log(f"world/camera_{camera_id}/color", rr.Image(camera_data['color']))
-                    rr.log(f"world/camera_{camera_id}/depth", rr.DepthImage(camera_data['depth']))
-                    rr.log(f"world/camera_{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
-                    rr.log(
+                    recording.log(f"world/camera_{camera_id}/color", rr.Image(camera_data['color']))
+                    recording.log(f"world/camera_{camera_id}/depth", rr.DepthImage(camera_data['depth']))
+                    recording.log(f"world/camera_{camera_id}/mask", rr.Image(camera_data['mask'], color_model="L"))
+                    recording.log(
                         f"world/camera_{camera_id}/seg",
                         rr.SegmentationImage(camera_data['seg']),
                         rr.AnnotationContext([
@@ -195,3 +197,4 @@ if __name__ == "__main__":
                             (2, "object", (0, 255, 0))
                         ])
                     )
+        del recording
