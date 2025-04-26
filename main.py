@@ -56,7 +56,7 @@ def make_unvisualized(scene: pyrender):
     return controller, renderer, transform, eef_forward_vector
     
 if __name__ == "__main__":
-    num_examples = 1000
+    num_examples = 10000
     num_cameras = 1
     num_objects = 2
     # num_humanoid_demos = 0
@@ -83,7 +83,7 @@ if __name__ == "__main__":
         rr.init("Rigid Manipulation Demo", recording_id=uuid4())
         rr.save(f"{dataset_dir}/dataset_{example}.rrd")
         # object_meshes = [trimesh.creation.box(extents=[np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15), np.random.uniform(0.05, 0.15)]) for _ in range(num_objects)]
-        object_meshes = [shapenet.get_random_mesh() for _ in range(num_objects)]
+        object_meshes = [shapenet.get_random_mesh().apply_scale(0.375) for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
         camera_states = [Camera() for _ in range(num_cameras)]
         rr.set_time_sequence("meta_episode_number", example)

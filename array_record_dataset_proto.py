@@ -235,9 +235,10 @@ for episode_number in tqdm(range(num_recordings), desc="Processing recording fil
     arrow_table = view.select().read_all()
     episode_df = pl.from_arrow(arrow_table)
     episode_df.sort(["meta_episode_number", "episode_number", "episode_frame_number"])
-    print(episode_df.schema.to_python())
+    print(episode_df.schema)
     episode_table = episode_df.to_arrow()
     proto_schema = polars_schema_to_proto(episode_df, message_name="table")
+    print(proto_schema)
     with open(f"dataset_array_record/table.proto", "w") as f:
         f.write(proto_schema)
     
