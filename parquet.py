@@ -1,3 +1,4 @@
+import os
 import glob
 from tqdm import tqdm
 import rerun as rr
@@ -40,8 +41,17 @@ def compress_image(df: pl.DataFrame, entity: str):
     return df
 
 num_recordings = len(glob.glob("dataset_rrd/*.rrd"))
-# num_recordings = 10
-for recording_file in tqdm(list(range(num_recordings)), desc="Processing recording files"):
+dataset_dir = "dataset_parquet"
+
+if not os.path.exists(dataset_dir):
+    os.makedirs(dataset_dir)
+    print(f"Created directory: {dataset_dir}")
+    starting_example = 0
+else:
+    print(f"Directory already exists: {dataset_dir}")
+    starting_example = max(0, len(os.listdir(dataset_dir)) - 3)
+    
+for recording_file in tqdm(list(range(starting_example, num_recordings)), desc="Processing recording files"):
     recording = rr.dataframe.load_recording(f"dataset_rrd/dataset_{recording_file}.rrd")
     view = recording.view(index="frame_id", contents="/**")
     arrow_table = view.select().read_all()
@@ -52,7 +62,7 @@ for recording_file in tqdm(list(range(num_recordings)), desc="Processing recordi
     # episode_df = compress_image(episode_df, "/world/camera_0/color")
     # episode_df = compress_image(episode_df, "/world/camera_0/mask")
     
-    episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="zstd", partition_by="meta_episode_number")
+    episode_df.write_parquet(dataset_dir, row_group_size=1, compression="zstd", partition_by="meta_episode_number")
     # episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="uncompressed", partition_by="meta_episode_number")
 
 # print("Loading parquet files from dataset directory...")
