@@ -52,8 +52,8 @@ for recording_file in tqdm(list(range(num_recordings)), desc="Processing recordi
     # episode_df = compress_image(episode_df, "/world/camera_0/color")
     # episode_df = compress_image(episode_df, "/world/camera_0/mask")
     
-    # episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="zstd", partition_by="meta_episode_number")
-    episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="uncompressed", partition_by="meta_episode_number")
+    episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="zstd", partition_by="meta_episode_number")
+    # episode_df.write_parquet(f"dataset_parquet", row_group_size=1, compression="uncompressed", partition_by="meta_episode_number")
 
 # print("Loading parquet files from dataset directory...")
 # lazy_df = pl.scan_parquet("dataset/**/*.parquet")

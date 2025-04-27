@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pyrender
 import trimesh
@@ -5,6 +6,8 @@ import rerun as rr
 from tqdm import tqdm
 from copy import deepcopy
 from uuid import uuid4
+import gc
+import tracemalloc
 
 from agent.policy import PosePolicy, JointPolicy, AbsoluteWaypoint, ObjectCentricWaypoint
 from sim.environment import Environment
@@ -69,8 +72,6 @@ if __name__ == "__main__":
     # rr.init("Rigid Manipulation Demo", spawn=True)
     dataset_frame_id = 0
     
-    import os
-    
     # Create dataset directory if it doesn't exist
     dataset_dir = "dataset_rrd"
     if not os.path.exists(dataset_dir):
@@ -82,16 +83,21 @@ if __name__ == "__main__":
         # overwrite the last 3 examples
         starting_example = max(0, len(os.listdir(dataset_dir)) - 3)
 
-    for example in tqdm(range(starting_example, num_examples), desc="Examples", position=0, leave=True):        
+    # tracemalloc.start(25)
+    # prev_snapshot = None
+
+    for i, example in enumerate(tqdm(range(starting_example, num_examples), desc="Examples", position=0, leave=True)):        
+        if i > 400:
+            break
         recording = rr.RecordingStream("Rigid Manipulation Demo", recording_id=uuid4())
         recording.save(f"{dataset_dir}/dataset_{example}.rrd")
         object_meshes = [shapenet.get_random_mesh().apply_scale(0.375) for _ in range(num_objects)]
         object_point_transforms = [trimesh_utils.object_point_and_normal(obj) for obj in object_meshes]
         camera_states = [Camera() for _ in range(num_cameras)]
-        rr.set_time("meta_episode_number", sequence=example)
+        recording.set_time("meta_episode_number", sequence=example)
 
         for demo in range(num_demo_episodes + num_execution_episodes):
-            rr.set_time("episode_number", sequence=demo)
+            recording.set_time("episode_number", sequence=demo)
             meta_episode_frame_number = 0
             arm_transforms = {}
 
@@ -198,3 +204,24 @@ if __name__ == "__main__":
                         ])
                     )
         del recording
+        gc.collect()
+        
+        # # Take a snapshot and compare with previous snapshot
+        # current_snapshot = tracemalloc.take_snapshot()
+        # if prev_snapshot:
+        #     top_stats = current_snapshot.compare_to(prev_snapshot, 'traceback')
+        #     print("\nMemory differences since last example:")
+        #     for stat in top_stats[:10]:  # top 10 memory differences
+        #         print(f"{stat.size_diff / 1024:.1f} KiB: ", end="")
+        #         print("\n".join(stat.traceback.format()))
+        #         print()
+        # else:
+        #     # For the first iteration, just show top allocations
+        #     top_stats = current_snapshot.statistics('traceback')
+        #     print("\nTop memory allocations:")
+        #     for stat in top_stats[:10]:
+        #         print(f"{stat.size / 1024:.1f} KiB: ", end="")
+        #         print("\n".join(stat.traceback.format()))
+        #         print()
+                
+        # prev_snapshot = current_snapshot

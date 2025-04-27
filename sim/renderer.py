@@ -100,3 +100,6 @@ class Renderer:
             }
             observations.append(frame_observations)
         return observations
+    def __del__(self):
+        if hasattr(self, "renderer") and self.renderer is not None:
+            self.renderer.delete()
